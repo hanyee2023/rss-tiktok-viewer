@@ -3,26 +3,29 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>RSS 抖音阅读器</title>
+<title>RSS 图文视频阅读器</title>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 <style>
 * {margin:0;padding:0;box-sizing:border-box;font-family:system-ui,sans-serif}
 body {background:#000;color:#fff}
 
-/* 顶部栏 */
 .top-bar {
 position:fixed;top:0;left:0;width:100%;background:#111;padding:10px;z-index:999;
-display:flex;gap:8px;align-items:center;overflow-x:auto
+display:flex;gap:8px;align-items:center;justify-content:flex-start;
+overflow-x:auto;white-space:nowrap;box-shadow:0 2px 10px rgba(0,0,0,0.5)
 }
 .btn {
-background:#ff6a00;color:#fff;border:none;padding:6px 10px;border-radius:6px;
-white-space:nowrap;cursor:pointer
+background:#ff6a00;color:#fff;border:none;padding:8px 12px;border-radius:8px;
+white-space:nowrap;cursor:pointer;font-weight:bold
 }
-.feed-item {
-background:#222;padding:6px 10px;border-radius:6px;cursor:pointer
+.btn.active {
+background:#ff9500;
 }
-.feed-item.active {background:#ff6a00}
+.badge {
+background:#fff;color:#ff6a00;font-size:12px;padding:2px 6px;border-radius:10px;font-weight:bold;
+display:inline-block;min-width:20px;text-align:center
+}
 
-/* 滑动容器 */
 .swiper {
 margin-top:60px;height:calc(100vh - 60px);overflow-y:scroll;
 scroll-snap-type:y mandatory;-webkit-overflow-scrolling:touch
@@ -30,208 +33,388 @@ scroll-snap-type:y mandatory;-webkit-overflow-scrolling:touch
 .card {
 width:100vw;height:calc(100vh - 60px);scroll-snap-align:start;
 position:relative;display:flex;align-items:center;justify-content:center;
-background:#000
+background:#000;overflow:hidden
 }
 
-/* 媒体全屏 */
 .media {
-width:100vw;height:100vh;object-fit:contain;background:#000
+width:100vw;height:100vh;object-fit:contain;background:#000;
+pointer-events:none;
 }
 .carousel {
 display:flex;width:100vw;height:100vh;overflow-x:scroll;scroll-snap-type:x mandatory}
 .carousel-item {min-width:100vw;height:100vh;scroll-snap-align:start}
 
-/* 标题 */
 .title {
-position:absolute;bottom:100px;left:10px;right:10px;background:#0008;padding:10px;
-border-radius:8px;max-height:80px;overflow:hidden
+position:absolute;bottom:80px;left:10px;right:10px;background:rgba(0,0,0,0.8);
+padding:12px;border-radius:8px;font-size:14px;line-height:1.4;z-index:10
 }
-.title.expand {max-height:none}
-.toggle-title {color:#ff6a00;background:none;border:none;cursor:pointer}
 
-/* 悬浮按钮 */
 .actions {
-position:absolute;right:10px;bottom:200px;display:flex;flex-direction:column;gap:12px
+position:absolute;right:15px;bottom:150px;display:flex;flex-direction:column;gap:15px;z-index:10
 }
 .action-btn {
-width:44px;height:44px;border-radius:50%;background:#ff6a00;color:#fff;
-border:none;display:flex;align-items:center;justify-content:center;cursor:pointer
+width:48px;height:48px;border-radius:50%;background:#ff6a00;color:#fff;
+border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;
+font-size:20px
 }
 
-/* 面板 */
 .panel {
-position:fixed;top:0;left:0;width:100%;height:100%;background:#000f;z-index:9999;
-padding:20px;display:none
+position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);z-index:9999;
+padding:20px;display:none;overflow-y:auto
 }
 .panel.show {display:block}
-input,textarea {width:100%;padding:10px;margin:6px 0;background:#222;color:#fff;border:none;border-radius:6px}
-.feed-list {margin-top:10px;display:flex;flex-direction:column;gap:6px}
+input, select, textarea {
+width:100%;padding:12px;margin:8px 0;background:#222;color:#fff;border:none;border-radius:8px;
+font-size:14px;
+}
+.feed-list {margin-top:15px;display:flex;column;gap:8px}
+.feed-row {display:flex;justify-content:space-between;align-items:center}
+.fav-item {background:#222;padding:12px;border-radius:8px;margin:8px 0}
+
+/* 强制视频控件常驻显示，不自动隐藏 */
+video::-webkit-media-controls {
+display:flex !important; opacity:1 !important; visibility:visible !important;
+}
+video::-webkit-media-controls-enclosure {
+opacity:1 !important;
+}
 </style>
 </head>
 <body>
 
 <div class="top-bar">
-<button class="btn" onclick="showAll()">全部</button>
-<button class="btn" onclick="showFeedManager()">订阅源</button>
-<div id="feed-tabs"></div>
+  <button class="btn active" onclick="switchTab('image', this)">图片</button>
+  <button class="btn" onclick="switchTab('video', this)">视频</button>
+  <button class="btn" onclick="showAddFeed()">新建</button>
+  <button class="btn" onclick="showFeedManager()">管理</button>
+  <button class="btn" onclick="showFavorites()">收藏</button>
+  <button class="btn" onclick="showImportExport()">导入/导出</button>
 </div>
 
-<div class="swiper" id="swiper"></div>
+<div class="swiper" id="swiper">加载中...</div>
 
-<div class="actions-fixed">
-<button class="action-btn" onclick="showFavorites()">⭐</button>
+<!-- 新建订阅源面板 -->
+<div class="panel" id="add-panel">
+  <h3>新建订阅源</h3>
+  <input id="new-name" placeholder="订阅源名称">
+  <input id="new-url" placeholder="RSS 地址">
+  <select id="new-type">
+    <option value="image">图片类</option>
+    <option value="video">视频类</option>
+  </select>
+  <button class="btn" onclick="addNewFeed()">保存</button>
+  <button class="btn" onclick="closePanel()">关闭</button>
 </div>
 
-<div class="panel" id="feed-panel">
-<h3>订阅管理</h3>
-<input id="feed-name" placeholder="名称">
-<input id="feed-url" placeholder="RSS 地址">
-<button class="btn" onclick="saveFeed()">保存</button>
-<div class="feed-list" id="manage-list"></div>
-<button class="btn" onclick="closePanel()">关闭</button>
+<!-- 编辑订阅源面板 -->
+<div class="panel" id="edit-panel">
+  <h3>编辑订阅源</h3>
+  <input id="edit-name" placeholder="订阅源名称">
+  <input id="edit-url" placeholder="RSS 地址">
+  <select id="edit-type">
+    <option value="image">图片类</option>
+    <option value="video">视频类</option>
+  </select>
+  <button class="btn" onclick="saveEdit()">保存</button>
+  <button class="btn" onclick="closePanel()">关闭</button>
 </div>
 
+<!-- 订阅源管理面板 -->
+<div class="panel" id="manage-panel">
+  <h3>订阅源管理</h3>
+  <div id="manage-list" class="feed-list"></div>
+  <button class="btn" onclick="closePanel()">关闭</button>
+</div>
+
+<!-- 收藏面板 -->
 <div class="panel" id="favorite-panel">
-<h3>我的收藏</h3>
-<div id="favorite-list"></div>
-<button class="btn" onclick="closePanel()">关闭</button>
+  <h3>我的收藏</h3>
+  <div id="favorite-list"></div>
+  <button class="btn" onclick="closePanel()">关闭</button>
+</div>
+
+<!-- 导入导出 & OPML 面板 -->
+<div class="panel" id="import-export-panel">
+  <h3>数据导入/导出</h3>
+  <button class="btn" onclick="exportData()">导出JSON备份</button>
+  <textarea id="import-data" placeholder="粘贴JSON备份数据"></textarea>
+  <button class="btn" onclick="importData()">导入JSON数据</button>
+  <hr style="margin:15px 0">
+  <h4>OPML 通用订阅导入</h4>
+  <textarea id="opml-data" placeholder="粘贴OPML文本"></textarea>
+  <input type="file" id="opml-file" accept=".opml,.xml">
+  <button class="btn" onclick="importOPML()">导入OPML订阅源</button>
+  <button class="btn" onclick="closePanel()">关闭</button>
 </div>
 
 <script>
-// ============== 存储 ==============
 const STORE = {
-get(k) {return JSON.parse(localStorage.getItem(k)||'[]')},
-set(k,v) {localStorage.setItem(k,JSON.stringify(v))}
+  get(k) { return JSON.parse(localStorage.getItem(k) || '[]') },
+  set(k, v) { localStorage.setItem(k, JSON.stringify(v)) }
 }
 
 let feeds = STORE.get('feeds')
 let read = STORE.get('read')
 let fav = STORE.get('fav')
+let allItems = []
 let currentFeed = 'all'
+let currentTab = 'image'
+let editingFeedUrl = ''
+let currentShowIndex = 0
+let currentDataList = []
 
-// ============== 订阅管理 ==============
-function saveFeed() {
-const name = document.getElementById('feed-name').value
-const url = document.getElementById('feed-url').value
-if (!name||!url) return
-feeds = feeds.filter(f=>f.url!==url)
-feeds.push({name,url})
-STORE.set('feeds',feeds)
-renderFeeds()
-refresh()
-closePanel()
+window.onload = function(){
+  refresh()
+  document.getElementById('swiper').addEventListener('scroll', handleScroll)
 }
 
-function deleteFeed(url) {
-feeds=feeds.filter(f=>f.url!==url)
-STORE.set('feeds',feeds)
-renderFeeds()
-refresh()
+// 分类切换：图片 / 视频
+function switchTab(tab, btn) {
+  currentTab = tab
+  document.querySelectorAll('.top-bar .btn').forEach(b => b.classList.remove('active'))
+  btn.classList.add('active')
+  refresh()
 }
 
-function renderFeeds() {
-const tab=document.getElementById('feed-tabs')
-tab.innerHTML=''
-feeds.forEach(f=>{
-const el=document.createElement('div')
-el.className='feed-item'+(currentFeed===f.url?' active':'')
-el.innerText=f.name
-el.onclick=()=>{currentFeed=f.url;renderFeeds();refresh()}
-tab.appendChild(el)
-})
+// 新建订阅源
+function showAddFeed(){ document.getElementById('add-panel').classList.add('show') }
+function addNewFeed(){
+  const name = document.getElementById('new-name').value.trim()
+  const url = document.getElementById('new-url').value.trim()
+  const type = document.getElementById('new-type').value
+  if(!name || !url) return alert('请填写完整名称和RSS地址')
+  const idx = feeds.findIndex(x => x.url === url)
+  if(idx >=0){ feeds[idx].name=name; feeds[idx].type=type }
+  else{ feeds.push({name,url,type}) }
+  STORE.set('feeds',feeds); refresh(); closePanel(); alert('添加成功')
 }
 
-// ============== 数据解析 ==============
-async function loadAll() {
-const items=[]
-for (const f of feeds) {
-try {
-const res=await fetch(f.url)
-const t=await res.text()
-const doc=new DOMParser().parseFromString(t,'text/xml')
-const nodes=Array.from(doc.querySelectorAll('item, entry'))
-nodes.forEach(n=>{
-const link = n.querySelector('link')?.href || n.querySelector('link')?.textContent || ''
-const title = n.querySelector('title')?.textContent || ''
-const desc = n.querySelector('description, content')?.textContent || ''
-const imgs=Array.from(desc.matchAll(/src="(.*?)"/g)).map(i=>i[1])
-items.push({feed:f.url,title,link,imgs})
-})
-} catch(e){}
+// 编辑订阅源
+function editFeed(u){
+  const f = feeds.find(x=>x.url===u)
+  if(!f) return
+  editingFeedUrl = u
+  document.getElementById('edit-name').value = f.name
+  document.getElementById('edit-url').value = f.url
+  document.getElementById('edit-type').value = f.type||'image'
+  document.getElementById('edit-panel').classList.add('show')
 }
-return items
-}
-
-// ============== 界面渲染 ==============
-async function refresh() {
-const swiper=document.getElementById('swiper')
-swiper.innerHTML='<div style="padding:40px">加载中...</div>'
-const all=await loadAll()
-const list=currentFeed==='all'?all:all.filter(i=>i.feed===currentFeed)
-const unread=list.filter(i=>!read.includes(i.link))
-swiper.innerHTML=''
-
-unread.forEach(item=>{
-const card=document.createElement('div')
-card.className='card'
-let media=''
-
-if (item.imgs.length>1) {
-media='<div class="carousel">'
-item.imgs.forEach(u=>{media+=`<div class="carousel-item"><img src="${u}" class="media"></div>`})
-media+='</div>'
-} else if (item.imgs.length===1) {
-media=`<img src="${item.imgs[0]}" class="media">`
-} else {
-media=`<iframe src="${item.link}" class="media" allowfullscreen></iframe>`
+function saveEdit(){
+  const name = document.getElementById('edit-name').value.trim()
+  const url = document.getElementById('edit-url').value.trim()
+  const type = document.getElementById('edit-type').value
+  if(!name||!url)return
+  const idx=feeds.findIndex(x=>x.url===editingFeedUrl)
+  if(idx>=0){feeds[idx].name=name;feeds[idx].url=url;feeds[idx].type=type}
+  STORE.set('feeds',feeds);refresh();closePanel();alert('修改成功')
 }
 
-card.innerHTML=`
-${media}
-<div class="title" id="t-${item.link}">
-${item.title}
-<button class="toggle-title" onclick="toggleTitle('${item.link}')">展开</button>
-</div>
-<div class="actions">
-<button class="action-btn" onclick="markRead('${item.link}')">✔</button>
-<button class="action-btn" onclick="addFav('${item}')">⭐</button>
-<button class="action-btn" onclick="downloadMedia('${item.imgs[0]||item.link}')">⬇</button>
-</div>
-`
-swiper.appendChild(card)
-})
+// 订阅管理列表
+function showFeedManager(){renderManageList();document.getElementById('manage-panel').classList.add('show')}
+function renderManageList(){
+  const ml=document.getElementById('manage-list')
+  ml.innerHTML=feeds.map(f=>{
+    const cnt=allItems.filter(i=>i.feed===f.url&&!read.includes(i.link)).length
+    const t=f.type==='video'?'【视频】':'【图片】'
+    return `
+    <div class="feed-row">
+      <span onclick="switchFeed('${f.url}')">${t} ${f.name}</span>
+      <div style="display:flex;gap:6px">
+        <span class="badge">${cnt}</span>
+        <button class="btn" onclick="editFeed('${f.url}')">编辑</button>
+        <button class="btn" onclick="markAllRead('${f.url}')">全部已读</button>
+        <button class="btn" onclick="deleteFeed('${f.url}')">删除</button>
+      </div>
+    </div>`
+  }).join('')
+}
+function switchFeed(u){currentFeed=u;refresh();closePanel()}
+function markAllRead(u){
+  allItems.forEach(i=>{if(i.feed===u&&!read.includes(i.link))read.push(i.link)})
+  STORE.set('read',read);refresh()
+}
+function deleteFeed(u){feeds=feeds.filter(x=>x.url!==u);STORE.set('feeds',feeds);refresh()}
+function closePanel(){document.querySelectorAll('.panel').forEach(p=>p.classList.remove('show'))}
+
+// JSON 导入导出
+function showImportExport(){document.getElementById('import-export-panel').classList.add('show')}
+function exportData(){
+  const d={feeds,read,fav}
+  const s=JSON.stringify(d,null,2)
+  navigator.clipboard.writeText(s).then(()=>alert('数据已复制到剪贴板'))
+  .catch(()=>prompt('复制失败，请手动复制下方内容：',s))
+}
+function importData(){
+  const s=document.getElementById('import-data').value.trim()
+  if(!s)return alert('请粘贴备份数据')
+  try{
+    const d=JSON.parse(s)
+    if(confirm('导入将覆盖现有数据，确定继续？')){
+      feeds=d.feeds||[];read=d.read||[];fav=d.fav||[]
+      STORE.set('feeds',feeds);STORE.set('read',read);STORE.set('fav',fav)
+      refresh();closePanel();alert('JSON 导入成功')
+    }
+  }catch(e){alert('数据格式错误，导入失败')}
 }
 
-// ============== 功能 ==============
-function markRead(link) {
-if (!read.includes(link)) read.push(link)
-STORE.set('read',read)
-refresh()
+// OPML 导入（通用RSS格式）
+function importOPML(){
+  const f=document.getElementById('opml-file')
+  const t=document.getElementById('opml-data').value.trim()
+  if(f.files.length>0){
+    const r=new FileReader()
+    r.onload=e=>parseOPML(e.target.result)
+    r.readAsText(f.files[0])
+  }else if(t)parseOPML(t)
+  else alert('请粘贴OPML文本或上传 .opml/.xml 文件')
 }
-function addFav(item) {
-if (!fav.some(x=>x.link===item.link)) fav.push(item)
-STORE.set('fav',fav)
-alert('已收藏')
+function parseOPML(x){
+  try{
+    const p=new DOMParser()
+    const d=p.parseFromString(x,'text/xml')
+    const o=d.querySelectorAll('outline[type="rss"]')
+    const n=[]
+    o.forEach(i=>{
+      const t=i.getAttribute('title')||i.getAttribute('text')||'未命名订阅'
+      const u=i.getAttribute('xmlUrl')||i.getAttribute('url')
+      if(u)n.push({name:t,url:u,type:'image'})
+    })
+    if(n.length===0) return alert('未解析到有效RSS订阅')
+    if(confirm(`检测到 ${n.length} 个订阅源，是否追加导入？`)){
+      feeds=[...feeds,...n];STORE.set('feeds',feeds);refresh();closePanel();alert('OPML 导入成功')
+    }
+  }catch(e){alert('OPML 解析失败')}
 }
-function downloadMedia(url) {
-const a=document.createElement('a')
-a.href=url;a.download='';document.body.appendChild(a)
-a.click();document.body.removeChild(a)
-}
-function toggleTitle(id) {
-document.getElementById('t-'+id).classList.toggle('expand')
-}
-function showAll() {currentFeed='all';renderFeeds();refresh()}
-function showFeedManager() {document.getElementById('feed-panel').classList.add('show')}
-function showFavorites() {
-const list=document.getElementById('favorite-list')
-list.innerHTML=fav.map((i,k)=>`<div style="padding:10px;background:#222;margin:6px">${i.title}<br><button class="btn" onclick="delFav(${k})">删除</button></div>`).join('')
-document.getElementById('favorite-panel').classList.add('show')
-}
-function delFav(k) {fav.splice(k,1);STORE.set('fav',fav);showFavorites()}
-function closePanel() {document.querySelectorAll('.panel').forEach(p=>p.classList.remove('show'))}
 
-window.onload=()=>{renderFeeds();refresh()}
+// 加载所有RSS内容
+async function loadAll(){
+  const r=[]
+  for(const f of feeds){
+    try{
+      const r1=await fetch(`/proxy?url=${encodeURIComponent(f.url)}`)
+      if(!r1.ok)continue
+      const t=await r1.text()
+      const d=new DOMParser().parseFromString(t,'text/xml')
+      const n=[...d.querySelectorAll('item'),...d.querySelectorAll('entry')]
+      n.forEach(i=>{
+        const l=(i.tagName==='item'?i.querySelector('link')?.textContent:i.querySelector('link')?.href)||''
+        const T=i.querySelector('title')?.textContent||'无标题'
+        const D=i.querySelector('description,content,summary')?.textContent||''
+        const im=(D.match(/src="(.*?)"/g)||[]).map(s=>s.replace(/src="|"/g,''))
+        r.push({feed:f.url,title:T,link:l,imgs:im,isVideo:f.type==='video'})
+      })
+    }catch(e){}
+  }
+  return r
+}
+
+// 滚动自动标记已读
+function handleScroll(){
+  const s=document.getElementById('swiper')
+  const h=s.clientHeight
+  const st=s.scrollTop
+  const now=Math.round(st/h)
+  if(now>currentShowIndex){
+    const p=currentDataList[currentShowIndex]
+    if(p&&!read.includes(p.link)){
+      read.push(p.link);STORE.set('read',read);renderManageList()
+    }
+  }
+  currentShowIndex=now
+}
+
+// 主界面渲染
+async function refresh(){
+  const s=document.getElementById('swiper')
+  s.innerHTML='加载中...'
+  allItems=await loadAll()
+  let list=currentFeed==='all'?allItems:allItems.filter(i=>i.feed===currentFeed)
+  if(currentTab==='image')list=list.filter(i=>!i.isVideo)
+  if(currentTab==='video')list=list.filter(i=>i.isVideo)
+  const unread=list.filter(i=>!read.includes(i.link))
+  currentDataList=unread;currentShowIndex=0;s.innerHTML=''
+  unread.forEach(item=>{
+    const c=document.createElement('div');c.className='card'
+    let m=''
+    const vId=`v${Math.random().toString(36).slice(2)}`
+    if(item.isVideo){
+      m=`<video id="${vId}" class="media" controls playsinline preload="auto"></video>`
+      setTimeout(()=>{
+        const v=document.getElementById(vId)
+        if(!v)return
+        if(item.link.endsWith('.m3u8')&&Hls.isSupported()){
+          const h=new Hls();h.loadSource(item.link);h.attachMedia(v)
+          h.on(Hls.Events.MANIFEST_PARSED,()=>v.play().catch(()=>{}))
+        }else{v.src=item.link;v.play().catch(()=>{})}
+        v.onclick=null
+      },0)
+    }else if(item.imgs.length>1){
+      m=`<div class="carousel">${item.imgs.map(u=>`<div class="carousel-item"><img src="${u}" class="media"></div>`).join('')}</div>`
+    }else if(item.imgs.length===1){
+      m=`<img src="${item.imgs[0]}" class="media">`
+    }else{
+      m=`<iframe src="${item.link}" class="media"></iframe>`
+    }
+    c.innerHTML=`
+    ${m}
+    <div class="title">${item.title}</div>
+    <div class="actions">
+      <button class="action-btn" onclick="addFav('${item.link}','${item.title}','${item.imgs[0]||''}',${item.isVideo})">⭐</button>
+    </div>`
+    s.appendChild(c)
+  })
+  renderManageList()
+}
+
+// 收藏功能
+function addFav(link,title,img,isVideo){
+  if(fav.some(x=>x.link===link))return alert('该内容已收藏')
+  fav.push({link,title,img,isVideo})
+  STORE.set('fav',fav);alert('收藏成功')
+}
+function showFavorites(){
+  const f=document.getElementById('favorite-list')
+  f.innerHTML=fav.map((k,i)=>{
+    let media=''
+    if(!k.isVideo&&k.img)media=`<img src="${k.img}" style="width:100%;height:160px;object-fit:cover">`
+    if(k.isVideo)media=`<div style="color:#aaa;padding:10px;background:#333">视频内容（点击查看播放）</div>`
+    return `
+    <div class="fav-item">
+      <div style="font-weight:bold;margin-bottom:4px">${k.title}</div>
+      ${media}
+      <div style="margin-top:8px;display:flex;gap:8px">
+        <button class="btn" onclick="viewFav('${k.link}')">查看</button>
+        <button class="btn" onclick="delFav(${i})">删除</button>
+      </div>
+    </div>`
+  }).join('')
+  document.getElementById('favorite-panel').classList.add('show')
+}
+function viewFav(link){
+  const item=allItems.find(i=>i.link===link)
+  if(!item)return alert('未找到对应内容')
+  const s=document.getElementById('swiper')
+  s.innerHTML=''
+  const c=document.createElement('div');c.className='card'
+  let m=''
+  const vId='fv'+Date.now()
+  if(item.isVideo){
+    m=`<video id="${vId}" class="media" controls playsinline preload="auto"></video>`
+    setTimeout(()=>{
+      const v=document.getElementById(vId)
+      if(item.link.endsWith('.m3u8')&&Hls.isSupported()){
+        const h=new Hls();h.loadSource(item.link);h.attachMedia(v)
+        h.on(Hls.Events.MANIFEST_PARSED,()=>v.play())
+      }else{v.src=item.link;v.play()}
+      v.onclick=null
+    },0)
+  }else if(item.imgs[0]){
+    m=`<img src="${item.imgs[0]}" class="media">`
+  }
+  c.innerHTML=m+`<div class="title">${item.title}</div>`
+  s.appendChild(c);closePanel()
+}
+function delFav(i){fav.splice(i,1);STORE.set('fav',fav);showFavorites()}
 </script>
 </body>
 </html>
