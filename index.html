@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>RSS 图文视频阅读器</title>
+<title>RSS 阅读器</title>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 <style>
 * {margin:0;padding:0;box-sizing:border-box;font-family:system-ui,sans-serif}
@@ -18,9 +18,7 @@ overflow-x:auto;white-space:nowrap;box-shadow:0 2px 10px rgba(0,0,0,0.5)
 background:#ff6a00;color:#fff;border:none;padding:8px 12px;border-radius:8px;
 white-space:nowrap;cursor:pointer;font-weight:bold
 }
-.btn.active {
-background:#ff9500;
-}
+.btn.active {background:#ff9500}
 .badge {
 background:#fff;color:#ff6a00;font-size:12px;padding:2px 6px;border-radius:10px;font-weight:bold;
 display:inline-block;min-width:20px;text-align:center
@@ -36,12 +34,8 @@ position:relative;display:flex;align-items:center;justify-content:center;
 background:#000;overflow:hidden
 }
 
-.media {
-width:100vw;height:100vh;object-fit:contain;background:#000;
-pointer-events:none;
-}
-.carousel {
-display:flex;width:100vw;height:100vh;overflow-x:scroll;scroll-snap-type:x mandatory}
+.media {width:100vw;height:100vh;object-fit:contain;background:#000}
+.carousel {display:flex;width:100vw;height:100vh;overflow-x:scroll;scroll-snap-type:x mandatory}
 .carousel-item {min-width:100vw;height:100vh;scroll-snap-align:start}
 
 .title {
@@ -65,19 +59,14 @@ padding:20px;display:none;overflow-y:auto
 .panel.show {display:block}
 input, select, textarea {
 width:100%;padding:12px;margin:8px 0;background:#222;color:#fff;border:none;border-radius:8px;
-font-size:14px;
+font-size:14px
 }
 .feed-list {margin-top:15px;display:flex;column;gap:8px}
 .feed-row {display:flex;justify-content:space-between;align-items:center}
 .fav-item {background:#222;padding:12px;border-radius:8px;margin:8px 0}
 
-/* 强制视频控件常驻显示，不自动隐藏 */
-video::-webkit-media-controls {
-display:flex !important; opacity:1 !important; visibility:visible !important;
-}
-video::-webkit-media-controls-enclosure {
-opacity:1 !important;
-}
+video::-webkit-media-controls {display:flex !important; opacity:1 !important}
+video::-webkit-media-controls-enclosure {opacity:1 !important}
 </style>
 </head>
 <body>
@@ -93,7 +82,6 @@ opacity:1 !important;
 
 <div class="swiper" id="swiper">加载中...</div>
 
-<!-- 新建订阅源面板 -->
 <div class="panel" id="add-panel">
   <h3>新建订阅源</h3>
   <input id="new-name" placeholder="订阅源名称">
@@ -106,7 +94,6 @@ opacity:1 !important;
   <button class="btn" onclick="closePanel()">关闭</button>
 </div>
 
-<!-- 编辑订阅源面板 -->
 <div class="panel" id="edit-panel">
   <h3>编辑订阅源</h3>
   <input id="edit-name" placeholder="订阅源名称">
@@ -119,28 +106,25 @@ opacity:1 !important;
   <button class="btn" onclick="closePanel()">关闭</button>
 </div>
 
-<!-- 订阅源管理面板 -->
 <div class="panel" id="manage-panel">
   <h3>订阅源管理</h3>
   <div id="manage-list" class="feed-list"></div>
   <button class="btn" onclick="closePanel()">关闭</button>
 </div>
 
-<!-- 收藏面板 -->
 <div class="panel" id="favorite-panel">
   <h3>我的收藏</h3>
   <div id="favorite-list"></div>
   <button class="btn" onclick="closePanel()">关闭</button>
 </div>
 
-<!-- 导入导出 & OPML 面板 -->
 <div class="panel" id="import-export-panel">
   <h3>数据导入/导出</h3>
   <button class="btn" onclick="exportData()">导出JSON备份</button>
   <textarea id="import-data" placeholder="粘贴JSON备份数据"></textarea>
   <button class="btn" onclick="importData()">导入JSON数据</button>
   <hr style="margin:15px 0">
-  <h4>OPML 通用订阅导入</h4>
+  <h4>OPML 导入</h4>
   <textarea id="opml-data" placeholder="粘贴OPML文本"></textarea>
   <input type="file" id="opml-file" accept=".opml,.xml">
   <button class="btn" onclick="importOPML()">导入OPML订阅源</button>
@@ -148,6 +132,8 @@ opacity:1 !important;
 </div>
 
 <script>
+const CORS_PROXY = "https://cors-anywhere.herokuapp.com/";
+
 const STORE = {
   get(k) { return JSON.parse(localStorage.getItem(k) || '[]') },
   set(k, v) { localStorage.setItem(k, JSON.stringify(v)) }
@@ -168,7 +154,6 @@ window.onload = function(){
   document.getElementById('swiper').addEventListener('scroll', handleScroll)
 }
 
-// 分类切换：图片 / 视频
 function switchTab(tab, btn) {
   currentTab = tab
   document.querySelectorAll('.top-bar .btn').forEach(b => b.classList.remove('active'))
@@ -176,20 +161,18 @@ function switchTab(tab, btn) {
   refresh()
 }
 
-// 新建订阅源
 function showAddFeed(){ document.getElementById('add-panel').classList.add('show') }
 function addNewFeed(){
   const name = document.getElementById('new-name').value.trim()
   const url = document.getElementById('new-url').value.trim()
   const type = document.getElementById('new-type').value
-  if(!name || !url) return alert('请填写完整名称和RSS地址')
+  if(!name || !url) return alert('请填写完整')
   const idx = feeds.findIndex(x => x.url === url)
   if(idx >=0){ feeds[idx].name=name; feeds[idx].type=type }
   else{ feeds.push({name,url,type}) }
-  STORE.set('feeds',feeds); refresh(); closePanel(); alert('添加成功')
+  STORE.set('feeds',feeds); refresh(); closePanel(); alert('成功')
 }
 
-// 编辑订阅源
 function editFeed(u){
   const f = feeds.find(x=>x.url===u)
   if(!f) return
@@ -209,7 +192,6 @@ function saveEdit(){
   STORE.set('feeds',feeds);refresh();closePanel();alert('修改成功')
 }
 
-// 订阅管理列表
 function showFeedManager(){renderManageList();document.getElementById('manage-panel').classList.add('show')}
 function renderManageList(){
   const ml=document.getElementById('manage-list')
@@ -236,28 +218,25 @@ function markAllRead(u){
 function deleteFeed(u){feeds=feeds.filter(x=>x.url!==u);STORE.set('feeds',feeds);refresh()}
 function closePanel(){document.querySelectorAll('.panel').forEach(p=>p.classList.remove('show'))}
 
-// JSON 导入导出
 function showImportExport(){document.getElementById('import-export-panel').classList.add('show')}
 function exportData(){
   const d={feeds,read,fav}
   const s=JSON.stringify(d,null,2)
-  navigator.clipboard.writeText(s).then(()=>alert('数据已复制到剪贴板'))
-  .catch(()=>prompt('复制失败，请手动复制下方内容：',s))
+  navigator.clipboard.writeText(s).then(()=>alert('已复制')).catch(()=>prompt('复制',s))
 }
 function importData(){
   const s=document.getElementById('import-data').value.trim()
-  if(!s)return alert('请粘贴备份数据')
+  if(!s)return alert('请粘贴')
   try{
     const d=JSON.parse(s)
-    if(confirm('导入将覆盖现有数据，确定继续？')){
+    if(confirm('覆盖现有数据？')){
       feeds=d.feeds||[];read=d.read||[];fav=d.fav||[]
       STORE.set('feeds',feeds);STORE.set('read',read);STORE.set('fav',fav)
-      refresh();closePanel();alert('JSON 导入成功')
+      refresh();closePanel();alert('导入成功')
     }
-  }catch(e){alert('数据格式错误，导入失败')}
+  }catch(e){alert('格式错误')}
 }
 
-// OPML 导入（通用RSS格式）
 function importOPML(){
   const f=document.getElementById('opml-file')
   const t=document.getElementById('opml-data').value.trim()
@@ -266,7 +245,7 @@ function importOPML(){
     r.onload=e=>parseOPML(e.target.result)
     r.readAsText(f.files[0])
   }else if(t)parseOPML(t)
-  else alert('请粘贴OPML文本或上传 .opml/.xml 文件')
+  else alert('请粘贴或上传')
 }
 function parseOPML(x){
   try{
@@ -275,25 +254,23 @@ function parseOPML(x){
     const o=d.querySelectorAll('outline[type="rss"]')
     const n=[]
     o.forEach(i=>{
-      const t=i.getAttribute('title')||i.getAttribute('text')||'未命名订阅'
+      const t=i.getAttribute('title')||i.getAttribute('text')||'无名'
       const u=i.getAttribute('xmlUrl')||i.getAttribute('url')
       if(u)n.push({name:t,url:u,type:'image'})
     })
-    if(n.length===0) return alert('未解析到有效RSS订阅')
-    if(confirm(`检测到 ${n.length} 个订阅源，是否追加导入？`)){
-      feeds=[...feeds,...n];STORE.set('feeds',feeds);refresh();closePanel();alert('OPML 导入成功')
+    if(confirm(`导入${n.length}个？`)){
+      feeds=[...feeds,...n];STORE.set('feeds',feeds);refresh();closePanel();alert('成功')
     }
-  }catch(e){alert('OPML 解析失败')}
+  }catch(e){alert('失败')}
 }
 
-// 加载所有RSS内容
 async function loadAll(){
   const r=[]
   for(const f of feeds){
     try{
-      const r1=await fetch(`/proxy?url=${encodeURIComponent(f.url)}`)
-      if(!r1.ok)continue
-      const t=await r1.text()
+      const res = await fetch(CORS_PROXY + encodeURIComponent(f.url))
+      if(!res.ok)continue
+      const t=await res.text()
       const d=new DOMParser().parseFromString(t,'text/xml')
       const n=[...d.querySelectorAll('item'),...d.querySelectorAll('entry')]
       n.forEach(i=>{
@@ -308,7 +285,6 @@ async function loadAll(){
   return r
 }
 
-// 滚动自动标记已读
 function handleScroll(){
   const s=document.getElementById('swiper')
   const h=s.clientHeight
@@ -323,7 +299,6 @@ function handleScroll(){
   currentShowIndex=now
 }
 
-// 主界面渲染
 async function refresh(){
   const s=document.getElementById('swiper')
   s.innerHTML='加载中...'
@@ -366,9 +341,8 @@ async function refresh(){
   renderManageList()
 }
 
-// 收藏功能
 function addFav(link,title,img,isVideo){
-  if(fav.some(x=>x.link===link))return alert('该内容已收藏')
+  if(fav.some(x=>x.link===link))return alert('已收藏')
   fav.push({link,title,img,isVideo})
   STORE.set('fav',fav);alert('收藏成功')
 }
@@ -377,22 +351,19 @@ function showFavorites(){
   f.innerHTML=fav.map((k,i)=>{
     let media=''
     if(!k.isVideo&&k.img)media=`<img src="${k.img}" style="width:100%;height:160px;object-fit:cover">`
-    if(k.isVideo)media=`<div style="color:#aaa;padding:10px;background:#333">视频内容（点击查看播放）</div>`
+    if(k.isVideo)media=`<div style="color:#aaa;padding:10px;background:#333">视频内容</div>`
     return `
     <div class="fav-item">
-      <div style="font-weight:bold;margin-bottom:4px">${k.title}</div>
-      ${media}
-      <div style="margin-top:8px;display:flex;gap:8px">
-        <button class="btn" onclick="viewFav('${k.link}')">查看</button>
-        <button class="btn" onclick="delFav(${i})">删除</button>
-      </div>
+      <div>${k.title}</div>${media}
+      <button class="btn" onclick="viewFav('${k.link}')">查看</button>
+      <button class="btn" onclick="delFav(${i})">删除</button>
     </div>`
   }).join('')
   document.getElementById('favorite-panel').classList.add('show')
 }
 function viewFav(link){
   const item=allItems.find(i=>i.link===link)
-  if(!item)return alert('未找到对应内容')
+  if(!item)return
   const s=document.getElementById('swiper')
   s.innerHTML=''
   const c=document.createElement('div');c.className='card'
