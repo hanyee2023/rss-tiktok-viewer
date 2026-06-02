@@ -41,6 +41,7 @@ padding:12px;border-radius:8px;font-size:14px;display:flex;gap:8px;align-items:c
 
 .panel{position:fixed;inset:0;background:rgba(0,0,0,.96);z-index:9999;padding:20px;display:none;overflow-y:auto}
 .panel.show{display:block}
+
 input,select,textarea{width:100%;padding:12px;margin:8px 0;background:#222;color:#fff;border:none;border-radius:8px;font-size:14px}
 .feed-list{margin-top:14px;display:flex;flex-direction:column;gap:12px}
 .feed-category{background:#ff6a00;padding:8px 12px;border-radius:8px;font-weight:bold;margin-bottom:6px}
@@ -66,13 +67,21 @@ input,select,textarea{width:100%;padding:12px;margin:8px 0;background:#222;color
 <input id="inUrl" placeholder="RSS链接">
 <select id="inType">
 <option value="img">图片源</option>
-<option value="video">MP4视频源</option>
+<option value="video">视频源</option>
 </select>
 <button class="btn" onclick="saveAdd()">保存</button>
 <button class="btn" onclick="hideAllPanel()">关闭</button>
 </div>
-<div class="panel" id="managePanel"><div id="manageBox"></div><button class="btn" onclick="hideAllPanel()" style="margin-top:15px">关闭</button></div>
-<div class="panel" id="favPanel"><div id="favBox"></div><button class="btn" onclick="hideAllPanel()">关闭</button></div>
+
+<div class="panel" id="managePanel">
+<div id="manageBox"></div>
+<button class="btn" onclick="hideAllPanel()" style="margin-top:15px">关闭</button>
+</div>
+
+<div class="panel" id="favPanel">
+  <div id="favBox"></div>
+  <button class="btn" onclick="hideAllPanel()" style="margin-top:15px">关闭</button>
+</div>
 
 <script>
 const PROXY = "https://corsproxy.io/?";
@@ -187,16 +196,19 @@ function showFav(){
   let html = '';
   favList.forEach((item,i)=>{
     let res = '';
-    if(item.isImg) res = `<img src="${item.res}" style="width:100%;height:180px;object-fit:contain">`;
-    else if(item.res) res = `<video controls style="width:100%;max-height:200px" src="${item.res}"></video>`;
+    if(item.isImg){
+      res = `<img src="${item.res}" style="width:100%;height:180px;object-fit:contain">`;
+    }else{
+      res = `<video controls style="width:100%;max-height:200px" src="${item.res}"></video>`;
+    }
     html += `<div class="fav-item">${item.title}${res}
-    <button class="btn" onclick="openFav('${item.link}')">查看</button>
-    <button class="btn" onclick="favList.splice(${i});STORE.set('fav',favList);showFav()">移除</button>
+    <button class="btn" onclick="favList.splice(${i},1);STORE.set('fav',favList);showFav()">移除</button>
     </div>`
   })
   document.getElementById('favBox').innerHTML = html||'<div style="color:#999">暂无收藏</div>';
   document.getElementById('favPanel').classList.add('show');
 }
+
 function openFav(link){
   const d = allData.find(x=>x.link===link);
   if(!d)return;
@@ -204,11 +216,11 @@ function openFav(link){
   const div = document.createElement('div');div.className='card';
   let dom = '';
   if(d.isImg) dom = `<img class="media" src="${d.res}">`;
-  else if(d.res.includes('video.twimg.com')) dom = '<div style="color:#fff">无法播放推特源</div>';
   else dom = `<video class="media" controls src="${d.res}"></video>`;
   div.innerHTML = `${dom}<div class="title"><div>${d.title}</div></div>`;
   wrap.appendChild(div);hideAllPanel();
 }
+
 function addFav(link,title,res,isImg){
   if(favList.some(i=>i.link===link))return alert('已收藏');
   favList.push({link,title,res,isImg});
@@ -241,7 +253,7 @@ async function loadAllRss(force=false){
             if(m)src=m[1];
             feedResult.push({source:feed.url,title,link,res:src,isImg:true});
           }else{
-            const mp4=desc.match(/https?:\/\/[^"\'\s]+\.mp4(\?[^"\'\s]*)?/gi);
+            const mp4=desc.match(/https?:\/\/[^\s]+\.mp4/gi);
             if(mp4&&mp4.length>0)src=mp4[0];
             feedResult.push({source:feed.url,title,link,res:src,isImg:false});
           }
@@ -265,7 +277,7 @@ async function loadAllRss(force=false){
               if(m)src=m[1];
               feedResult.push({source:feed.url,title,link,res:src,isImg:true});
             }else{
-              const mp4=desc.match(/https?:\/\/[^"\'\s]+\.mp4(\?[^"\'\s]*)?/gi);
+              const mp4=desc.match(/https?:\/\/[^\s]+\.mp4/gi);
               if(mp4&&mp4.length>0)src=mp4[0];
               feedResult.push({source:feed.url,title,link,res:src,isImg:false});
             }
@@ -273,7 +285,7 @@ async function loadAllRss(force=false){
           success=true;
         }
       }catch(err2){
-        alert(`【${feed.name}】两次请求全部失败：源无法访问/链接失效`);
+        alert(`【${feed.name}】源无法访问`);
       }
     }
     if(success){
@@ -292,20 +304,16 @@ wrap.addEventListener('scroll',()=>{
     const pos = wrap.scrollTop;
     const idx = Math.round(pos/h);
     if(Math.abs(idx-nowIndex)>1)return;
-    // 标记已读
-    if(idx>nowIndex){
-      const d = renderList[nowIndex];
-      if(d&&!readList.includes(d.link)){
-        readList.push(d.link);STORE.set('read',readList);renderManage();
-      }
-    }
-    // 核心：切页后暂停上个、自动播放当前
     if(idx !== nowIndex){
-      // 停止上一个
+      const prevItem = renderList[nowIndex];
+      if(prevItem&&!readList.includes(prevItem.link)){
+        readList.push(prevItem.link);
+        STORE.set('read',readList);
+        renderManage();
+      }
       if(currVideo){
         currVideo.pause();
       }
-      // 拿到当前卡片里的video
       const curCard = wrap.children[idx];
       if(curCard){
         const v = curCard.querySelector('video');
@@ -333,13 +341,12 @@ function renderPage(){
     const card = document.createElement('div');card.className='card';
     let domStr = '';
     if(item.isImg){
-      if(item.res) domStr = `<img class="media" loading="lazy" referrerpolicy="no-referrer" src="${item.res}">`;
-      else domStr = `<div style="color:#aaa">本条无图片，仅展示标题</div>`;
+      if(item.res) domStr = `<img class="media" src="${item.res}">`;
+      else domStr = `<div style="color:#aaa">无图片</div>`;
     }else{
-      if(!item.res) domStr = `<div style="color:#aaa">本条未抓取到MP4视频链接</div>`;
-      else if(item.res.includes('video.twimg.com')) domStr = `<div style="color:#fff">该推特MP4无法内嵌播放</div>`;
-      // 保留controls手动播放按钮，去掉autoplay，交由滑动事件控制自动播放
-      else domStr = `<video class="media" controls preload="metadata" src="${item.res}"></video>`;
+      if(!item.res) domStr = `<div style="color:#aaa">未获取到MP4</div>`;
+      // ✅ 所有视频统一：直接自动播放，无任何判断！
+      else domStr = `<video class="media" controls autoplay muted playsinline src="${item.res}"></video>`;
     }
     const tid = 't_'+Math.random().toString(36).slice(3);
     card.innerHTML = `
