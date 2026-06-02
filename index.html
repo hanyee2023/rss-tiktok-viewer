@@ -11,208 +11,259 @@
             box-sizing: border-box;
         }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background: #0f0f0f;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #000;
             color: #fff;
             max-width: 480px;
             margin: 0 auto;
-            padding: 10px;
+            padding: 0;
         }
         header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            max-width: 480px;
+            margin: 0 auto;
+            background: #000;
+            z-index: 99;
+            padding: 10px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 15px;
+            border-bottom: 1px solid #222;
         }
         h1 {
-            font-size: 20px;
+            font-size: 18px;
         }
         .btn {
-            background: #272727;
+            background: #fe2c55;
             color: #fff;
             border: none;
             padding: 8px 12px;
-            border-radius: 6px;
+            border-radius: 20px;
             cursor: pointer;
             font-size: 14px;
         }
-        .btn:active {
-            opacity: 0.8;
-        }
         .tabs {
+            position: fixed;
+            top: 50px;
+            left: 0;
+            right: 0;
+            max-width: 480px;
+            margin: 0 auto;
+            background: #000;
             display: flex;
-            gap: 6px;
-            margin-bottom: 15px;
+            z-index: 98;
+            border-bottom: 1px solid #222;
         }
         .tab {
             flex: 1;
             text-align: center;
-            padding: 8px;
-            background: #1f1f1f;
-            border-radius: 6px;
-            font-size: 14px;
+            padding: 12px;
+            font-size: 15px;
+            color: #888;
         }
         .tab.active {
-            background: #3a3a3a;
+            color: #fff;
             font-weight: bold;
+            border-bottom: 2px solid #fe2c55;
+        }
+        .container {
+            margin-top: 100px;
+            padding: 10px;
         }
         .feed-item {
-            background: #1a1a1a;
+            margin-bottom: 15px;
+            background: #111;
             border-radius: 8px;
-            padding: 10px;
-            margin-bottom: 10px;
+            overflow: hidden;
         }
         .feed-item h3 {
+            padding: 10px;
             font-size: 15px;
-            margin-bottom: 5px;
-        }
-        .feed-item p {
-            font-size: 13px;
-            color: #ccc;
-        }
-        .feed-item img {
-            width: 100%;
-            border-radius: 6px;
-            margin-top: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
         .unread-badge {
-            display: inline-block;
-            background: #f43f5e;
-            color: #fff;
+            background: #fe2c55;
             font-size: 12px;
-            padding: 2px 6px;
+            padding: 2px 8px;
             border-radius: 10px;
-            margin-left: 6px;
+        }
+        .media-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px;
+        }
+        .media-grid img, .media-grid video {
+            width: 100%;
+            aspect-ratio: 1;
+            object-fit: cover;
+            background: #222;
         }
         .form-box {
-            background: #1a1a1a;
-            border-radius: 8px;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.9);
+            z-index: 100;
+            padding: 20px;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .form-box input, .form-box select {
+            width: 100%;
             padding: 12px;
-            margin-bottom: 15px;
-        }
-        .form-box input {
-            width: 100%;
-            padding: 10px;
-            margin-bottom: 10px;
+            margin-bottom: 12px;
             border-radius: 6px;
             border: none;
-            outline: none;
-            font-size: 14px;
-            background: #2b2b2b;
+            background: #222;
             color: #fff;
+            font-size: 15px;
         }
-        .form-box select {
+        .form-box .btn {
             width: 100%;
-            padding: 10px;
-            border-radius: 6px;
-            border: none;
-            background: #2b2b2b;
-            color: #fff;
-            margin-bottom: 10px;
+            padding: 12px;
+            font-size: 16px;
         }
-        .tip {
-            font-size: 12px;
-            color: #999;
-            margin-top: 6px;
+        .close-btn {
+            background: #333;
+            margin-top: 10px;
+        }
+        .empty-tip {
+            text-align: center;
+            color: #666;
+            margin-top: 50px;
         }
     </style>
 </head>
 <body>
     <header>
         <h1>RSS 阅读器</h1>
-        <button class="btn" onclick="showAddForm()">新建</button>
+        <button class="btn" onclick="showAddForm()">+ 新建</button>
     </header>
 
     <div class="tabs">
-        <div class="tab active" onclick="switchTab('list')">列表</div>
+        <div class="tab active" onclick="switchTab('all')">全部</div>
+        <div class="tab" onclick="switchTab('image')">图片</div>
+        <div class="tab" onclick="switchTab('video')">视频</div>
         <div class="tab" onclick="switchTab('manage')">管理</div>
     </div>
 
-    <!-- 新增源表单 -->
-    <div id="addForm" class="form-box" style="display:none;">
-        <input id="feedName" placeholder="名称（如 测试）">
+    <!-- 新增源弹窗 -->
+    <div id="addForm" class="form-box">
+        <input id="feedName" placeholder="订阅名称（如 短视频）">
         <input id="feedUrl" placeholder="RSS 地址">
         <select id="feedType">
-            <option value="image">图片模式</option>
-            <option value="text">文本模式</option>
+            <option value="image">图片源</option>
+            <option value="video">视频源</option>
         </select>
-        <button class="btn" style="width:100%" onclick="addFeed()">保存</button>
-        <div class="tip">示例：https://n.sinaapp.com/feed</div>
+        <button class="btn" onclick="addFeed()">保存</button>
+        <button class="btn close-btn" onclick="hideAddForm()">取消</button>
     </div>
 
     <!-- 内容区 -->
-    <div id="listView"></div>
-    <div id="manageView" style="display:none;"></div>
+    <div class="container" id="container"></div>
 
     <script>
-        // ------------------- 代理配置（已优化） -------------------
+        // 双代理（解决跨域，优先allorigins，失败切cors-anywhere）
         const PROXY_LIST = [
             url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
             url => `https://cors-anywhere.herokuapp.com/${url}`
         ];
         let proxyIndex = 0;
 
-        // 存储
+        // 本地存储
         let feeds = JSON.parse(localStorage.getItem('rssFeeds')) || [];
+        let currentTab = 'all';
 
         // 初始化
         document.addEventListener('DOMContentLoaded', () => {
-            renderList();
-            renderManage();
+            renderFeeds();
         });
 
         // 切换标签
         function switchTab(tab) {
+            currentTab = tab;
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             event.target.classList.add('active');
-            document.getElementById('listView').style.display = tab === 'list' ? 'block' : 'none';
-            document.getElementById('manageView').style.display = tab === 'manage' ? 'block' : 'none';
+            renderFeeds();
         }
 
-        // 显示新增表单
-        function showAddForm() {
-            document.getElementById('addForm').style.display = 'block';
-        }
+        // 显示/隐藏新增表单
+        function showAddForm() { document.getElementById('addForm').style.display = 'flex'; }
+        function hideAddForm() { document.getElementById('addForm').style.display = 'none'; }
 
-        // 添加源
+        // 添加订阅
         function addFeed() {
             const name = document.getElementById('feedName').value.trim();
             const url = document.getElementById('feedUrl').value.trim();
             const type = document.getElementById('feedType').value;
             if (!name || !url) return alert('名称和地址不能为空');
-            feeds.push({ name, url, type, unread: 0 });
+            feeds.push({ name, url, type, unread: 0, items: [] });
             localStorage.setItem('rssFeeds', JSON.stringify(feeds));
-            document.getElementById('addForm').style.display = 'none';
+            hideAddForm();
             document.getElementById('feedName').value = '';
             document.getElementById('feedUrl').value = '';
-            renderList();
-            renderManage();
+            renderFeeds();
         }
 
-        // 渲染列表
-        function renderList() {
-            const container = document.getElementById('listView');
+        // 渲染所有订阅（按当前标签过滤：全部/图片/视频/管理）
+        function renderFeeds() {
+            const container = document.getElementById('container');
             container.innerHTML = '';
-            feeds.forEach((feed, idx) => {
+
+            // 管理页
+            if (currentTab === 'manage') {
+                if (feeds.length === 0) {
+                    container.innerHTML = '<div class="empty-tip">暂无订阅，点击右上角+新建</div>';
+                    return;
+                }
+                feeds.forEach((feed, idx) => {
+                    const div = document.createElement('div');
+                    div.className = 'feed-item';
+                    div.innerHTML = `
+                        <h3>
+                            ${feed.name}
+                            <button class="btn" style="background:#991b1b;padding:4px 8px;font-size:12px;" onclick="delFeed(${idx})">删除</button>
+                        </h3>
+                        <p style="padding:0 10px 10px;color:#ccc;font-size:13px;">${feed.url}</p>
+                    `;
+                    container.appendChild(div);
+                });
+                return;
+            }
+
+            // 过滤：全部/图片/视频
+            const filtered = feeds.filter(f => currentTab === 'all' || f.type === currentTab);
+            if (filtered.length === 0) {
+                container.innerHTML = '<div class="empty-tip">当前分类暂无订阅</div>';
+                return;
+            }
+
+            // 渲染每个订阅
+            filtered.forEach((feed, idx) => {
                 const div = document.createElement('div');
                 div.className = 'feed-item';
-                div.innerHTML = `
-                    <h3>${feed.name} <span class="unread-badge">${feed.unread}</span></h3>
-                    <p>加载中...</p>
-                `;
+                div.innerHTML = `<h3>${feed.name} <span class="unread-badge">${feed.unread}</span></h3><div class="media-grid">加载中...</div>`;
                 container.appendChild(div);
-                loadFeed(idx, div);
+                loadFeed(filtered.indexOf(feed), div);
             });
         }
 
-        // 加载单个RSS
+        // 加载单个RSS（双代理轮询，超时10秒）
         async function loadFeed(feedIdx, dom) {
             const feed = feeds[feedIdx];
             const url = feed.url;
             const type = feed.type;
             let xml = null;
 
-            // 双代理轮询
+            // 尝试所有代理
             for (let i = 0; i < PROXY_LIST.length; i++) {
                 const proxy = PROXY_LIST[proxyIndex];
                 proxyIndex = (proxyIndex + 1) % PROXY_LIST.length;
@@ -228,56 +279,61 @@
             }
 
             if (!xml) {
-                dom.innerHTML = `<h3>${feed.name}</h3><p style="color:#f43f5e;">加载失败/被跨域拦截</p>`;
+                dom.querySelector('.media-grid').innerHTML = '<p style="color:red;">加载失败/跨域拦截</p>';
                 return;
             }
 
+            // 解析XML
             const parser = new DOMParser();
             const doc = parser.parseFromString(xml, 'text/xml');
             const items = doc.querySelectorAll('item');
-            feeds[feedIdx].unread = items.length;
-            localStorage.setItem('rssFeeds', JSON.stringify(feeds));
+            const feedItems = [];
 
-            let html = `<h3>${feed.name} <span class="unread-badge">${items.length}</span></h3>`;
+            // 提取图片/视频
             items.forEach(item => {
-                const title = item.querySelector('title')?.textContent || '无标题';
+                const title = item.querySelector('title')?.textContent || '';
                 const link = item.querySelector('link')?.textContent || '';
                 const desc = item.querySelector('description')?.textContent || '';
-                const imgMatch = desc.match(/<img[^>]+src="([^"]+)"/);
-                const img = imgMatch ? imgMatch[1] : '';
+                const media = extractMedia(desc);
+                if (media) feedItems.push({ title, link, media });
+            });
 
-                if (type === 'image' && img) {
-                    html += `<a href="${link}" target="_blank"><img src="${img}" alt=""></a>`;
+            // 更新未读数
+            feeds[feedIdx].unread = feedItems.length;
+            feeds[feedIdx].items = feedItems;
+            localStorage.setItem('rssFeeds', JSON.stringify(feeds));
+
+            // 渲染媒体网格
+            let gridHtml = '';
+            feedItems.forEach(item => {
+                if (item.media.endsWith('.mp4') || item.media.includes('video')) {
+                    gridHtml += `<video src="${item.media}" controls></video>`;
                 } else {
-                    html += `<p><a href="${link}" target="_blank" style="color:#60a5fa;text-decoration:none;">${title}</a></p>`;
+                    gridHtml += `<img src="${item.media}" alt="${item.title}">`;
                 }
             });
-            dom.innerHTML = html;
+            dom.querySelector('.media-grid').innerHTML = gridHtml;
+            dom.querySelector('.unread-badge').textContent = feedItems.length;
         }
 
-        // 渲染管理
-        function renderManage() {
-            const container = document.getElementById('manageView');
-            container.innerHTML = '';
-            feeds.forEach((feed, idx) => {
-                const div = document.createElement('div');
-                div.className = 'feed-item';
-                div.innerHTML = `
-                    <h3>${feed.name}</h3>
-                    <p>${feed.url}</p>
-                    <button class="btn" style="margin-top:8px;background:#991b1b;" onclick="delFeed(${idx})">删除</button>
-                `;
-                container.appendChild(div);
-            });
+        // 从description提取第一张图片/视频
+        function extractMedia(html) {
+            if (!html) return '';
+            // 视频
+            const videoMatch = html.match(/<video[^>]+src="([^"]+)"/);
+            if (videoMatch) return videoMatch[1];
+            // 图片
+            const imgMatch = html.match(/<img[^>]+src="([^"]+)"/);
+            if (imgMatch) return imgMatch[1];
+            return '';
         }
 
-        // 删除源
+        // 删除订阅
         function delFeed(idx) {
-            if (!confirm('确定删除？')) return;
+            if (!confirm('确定删除此订阅？')) return;
             feeds.splice(idx, 1);
             localStorage.setItem('rssFeeds', JSON.stringify(feeds));
-            renderList();
-            renderManage();
+            renderFeeds();
         }
     </script>
 </body>
