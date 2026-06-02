@@ -33,35 +33,28 @@ width:100vw;height:calc(100vh - 60px);scroll-snap-align:start;
 position:relative;display:flex;align-items:center;justify-content:center;
 background:#000;overflow:hidden
 }
+/* 骨架屏 */
+.skeleton {
+width:100%;height:100%;background:#222;
+display:flex;align-items:center;justify-content:center;color:#666
+}
 
 .media {width:100vw;height:100vh;object-fit:contain;background:#000}
 .carousel {display:flex;width:100vw;height:100vh;overflow-x:scroll;scroll-snap-type:x mandatory}
 .carousel-item {min-width:100vw;height:100vh;scroll-snap-align:start}
 
-/* 标题单行折叠 + 展开按钮 */
 .title {
 position:absolute;bottom:80px;left:10px;right:10px;background:rgba(0,0,0,0.8);
 padding:12px;border-radius:8px;font-size:14px;line-height:1.4;z-index:10;
 display:flex;align-items:center;justify-content:space-between
 }
 .title-text {
-overflow:hidden;
-white-space:nowrap;
-text-overflow:ellipsis;
-flex:1;
+overflow:hidden;white-space:nowrap;text-overflow:ellipsis;flex:1;
 }
-.title-text.expanded {
-white-space:normal;
-}
+.title-text.expanded {white-space:normal;}
 .toggle-btn {
-color:#ff6a00;
-background:transparent;
-border:none;
-font-size:12px;
-padding:0 4px;
-cursor:pointer;
-flex-shrink:0;
-margin-left:8px;
+color:#ff6a00;background:transparent;border:none;font-size:12px;padding:0 4px;
+cursor:pointer;flex-shrink:0;margin-left:8px;
 }
 
 .actions {
@@ -110,7 +103,7 @@ opacity:1 !important; display:flex !important;
   <button class="btn" onclick="showImportExport()">导入/导出</button>
 </div>
 
-<div class="swiper" id="swiper">加载中...</div>
+<div class="swiper" id="swiper"></div>
 
 <div class="panel" id="add-panel">
   <h3>新建订阅源</h3>
@@ -163,6 +156,8 @@ opacity:1 !important; display:flex !important;
 
 <script>
 const CORS_PROXY = "https://api.allorigins.win/raw?url=";
+const RSS_CACHE = new Map(); // RSS 缓存 {url: {items, time}}
+const CACHE_TTL = 5 * 60 * 1000; // 5分钟缓存
 
 const STORE = {
   get(k) { return JSON.parse(localStorage.getItem(k) || '[]') },
@@ -180,16 +175,21 @@ let currentShowIndex = 0
 let currentDataList = []
 let activeVideoElement = null;
 
+// 虚拟滚动相关
+const SWIPER = document.getElementById('swiper');
+let visibleStart = 0;
+let visibleEnd = 5;
+
 window.onload = function(){
-  refresh()
-  document.getElementById('swiper').addEventListener('scroll', handleScroll)
+  refresh(true); // 首次加载才拉 RSS
+  SWIPER.addEventListener('scroll', handleScroll)
 }
 
 function switchTab(tab, btn) {
   currentTab = tab
   document.querySelectorAll('.top-bar .btn').forEach(b => b.classList.remove('active'))
   btn.classList.add('active')
-  refresh()
+  renderCards(); // 只重新渲染卡片，不拉 RSS
 }
 
 function showAddFeed(){ document.getElementById('add-panel').classList.add('show') }
@@ -202,7 +202,7 @@ function addNewFeed(){
   if(idx >=0){ feeds[idx].name=name; feeds[idx].type=type }
   else{ feeds.push({name,url,type}) }
   STORE.set('feeds',feeds);
-  refresh();
+  refresh(true); // 新增订阅才拉 RSS
   closePanel();
   alert('成功')
 }
@@ -224,7 +224,7 @@ function saveEdit(){
   const idx=feeds.findIndex(x=>x.url===editingFeedUrl)
   if(idx>=0){feeds[idx].name=name;feeds[idx].url=url;feeds[idx].type=type}
   STORE.set('feeds',feeds);
-  refresh();
+  refresh(true); // 编辑订阅才拉 RSS
   closePanel();
   alert('修改成功')
 }
@@ -277,26 +277,22 @@ function renderManageList(){
   ml.innerHTML = html
 }
 
-function switchFeed(u){currentFeed=u;refresh();closePanel()}
+function switchFeed(u){currentFeed=u;renderCards();closePanel()}
 
 function markAllRead(u){
   allItems.forEach(i=>{if(i.feed===u&&!read.includes(i.link))read.push(i.link)})
-  STORE.set('read',read);refresh()
+  STORE.set('read',read);renderManageList();renderCards()
 }
 
-// ========== 修复2：删除订阅源时自动清空该源的已读记录 ==========
 function deleteFeed(u){
-  // 清除该订阅源的所有已读链接
   read = read.filter(link => {
     const item = allItems.find(i => i.link === link);
     return !(item && item.feed === u);
   });
   STORE.set('read', read);
-
-  // 删除订阅源
   feeds = feeds.filter(x=>x.url!==u);
   STORE.set('feeds',feeds);
-  refresh();
+  refresh(true);
 }
 
 function closePanel(){document.querySelectorAll('.panel').forEach(p=>p.classList.remove('show'))}
@@ -315,7 +311,7 @@ function importData(){
     if(confirm('覆盖现有数据？')){
       feeds=d.feeds||[];read=d.read||[];fav=d.fav||[]
       STORE.set('feeds',feeds);STORE.set('read',read);STORE.set('fav',fav)
-      refresh();closePanel();alert('导入成功')
+      refresh(true);closePanel();alert('导入成功')
     }
   }catch(e){alert('格式错误')}
 }
@@ -342,20 +338,30 @@ function parseOPML(x){
       if(u)n.push({name:t,url:u,type:'image'})
     })
     if(confirm(`导入${n.length}个？`)){
-      feeds=[...feeds,...n];STORE.set('feeds',feeds);refresh();closePanel();alert('成功')
+      feeds=[...feeds,...n];STORE.set('feeds',feeds);refresh(true);closePanel();alert('成功')
     }
   }catch(e){alert('失败')}
 }
 
-async function loadAll(){
+// 带缓存的加载 RSS
+async function loadAll(force=false){
   const r=[]
   for(const f of feeds){
+    const now = Date.now();
+    const cached = RSS_CACHE.get(f.url);
+    // 有缓存且没过期、不强制刷新 → 用缓存
+    if(!force && cached && now - cached.time < CACHE_TTL){
+      r.push(...cached.items);
+      continue;
+    }
+    // 否则重新请求
     try{
       const res = await fetch(CORS_PROXY + encodeURIComponent(f.url))
       if(!res.ok)continue
       const t=await res.text()
       const d=new DOMParser().parseFromString(t,'text/xml')
       const n=[...d.querySelectorAll('item'),...d.querySelectorAll('entry')]
+      const items = [];
       n.forEach(i=>{
         const l=(i.tagName==='item'?i.querySelector('link')?.textContent:i.querySelector('link')?.href)||''
         const T=i.querySelector('title')?.textContent||'无标题'
@@ -366,25 +372,43 @@ async function loadAll(){
         while ((match = imgRegex.exec(D)) !== null) {
           imgs.push(match[1]);
         }
-        r.push({feed:f.url,title:T,link:l,imgs:imgs,isVideo:f.type==='video'})
+        items.push({feed:f.url,title:T,link:l,imgs:imgs,isVideo:f.type==='video'})
       })
+      RSS_CACHE.set(f.url, {items, time: now});
+      r.push(...items);
     }catch(e){console.error("加载RSS失败:", e)}
   }
   return r
 }
 
+// 处理滚动 + 虚拟滚动
 function handleScroll(){
-  const s=document.getElementById('swiper')
-  const h=s.clientHeight
-  const st=s.scrollTop
+  const h=SWIPER.clientHeight
+  const st=SWIPER.scrollTop
   const now=Math.round(st/h)
+  // 虚拟滚动范围
+  const newStart = Math.max(0, now - 2);
+  const newEnd = now + 3;
+  if(newStart !== visibleStart || newEnd !== visibleEnd){
+    visibleStart = newStart;
+    visibleEnd = newEnd;
+    renderCards();
+  }
+  // 标记已读
   if(now>currentShowIndex){
     const p=currentDataList[currentShowIndex]
     if(p&&!read.includes(p.link)){
       read.push(p.link);STORE.set('read',read);renderManageList()
     }
   }
-  currentShowIndex=now
+  currentShowIndex=now;
+  // 视频离开视口暂停
+  if(activeVideoElement){
+    const rect = activeVideoElement.getBoundingClientRect();
+    if(rect.top > window.innerHeight || rect.bottom < 0){
+      activeVideoElement.pause();
+    }
+  }
 }
 
 // 标题展开/收起
@@ -395,30 +419,44 @@ function toggleTitle(id) {
   btn.textContent = el.classList.contains('expanded') ? '收起' : '展开';
 }
 
-async function refresh(){
+// 主刷新（首次/增删订阅时拉RSS）
+async function refresh(force=false){
+  allItems=await loadAll(force);
+  renderManageList();
+  renderCards();
+}
+
+// 只渲染卡片（虚拟滚动 + 过滤）
+function renderCards(){
   if (activeVideoElement) {
     activeVideoElement.pause();
     activeVideoElement = null;
   }
-
-  const s=document.getElementById('swiper')
-  s.innerHTML='加载中...'
-  allItems=await loadAll()
-  renderManageList();
-
   let list=currentFeed==='all'?allItems:allItems.filter(i=>i.feed===currentFeed)
   if(currentTab==='image')list=list.filter(i=>!i.isVideo)
   if(currentTab==='video')list=list.filter(i=>i.isVideo)
   const unread=list.filter(i=>!read.includes(i.link))
-  currentDataList=unread;currentShowIndex=0;s.innerHTML=''
+  currentDataList=unread;
+  currentShowIndex=0;
 
-  unread.forEach((item, idx) => {
+  // 虚拟滚动：只渲染 visibleStart ~ visibleEnd
+  const toRender = unread.slice(visibleStart, visibleEnd);
+  // 占位高度（保证滚动条正确）
+  const totalHeight = unread.length * (window.innerHeight - 60);
+  SWIPER.style.paddingTop = (visibleStart * (window.innerHeight - 60)) + 'px';
+  SWIPER.innerHTML = '';
+
+  toRender.forEach((item, idx) => {
+    const realIdx = visibleStart + idx;
     const c=document.createElement('div');c.className='card'
     let m=''
-    const vId=`v${Math.random().toString(36).slice(2)}`
-    const titleId = `title-${idx}`;
+    const vId=`v${realIdx}`
+    const titleId = `title-${realIdx}`;
 
-    // ========== 修复1：屏蔽无法播放的推特视频 ==========
+    // 骨架屏优先
+    c.innerHTML = `<div class="skeleton">加载中...</div>`;
+
+    // 推特视频直接拦截
     if(item.isVideo){
       if (item.link.includes('video.twimg.com')) {
         m = `<div style="color:#fff;padding:20px;">当前环境无法播放推特视频</div>`;
@@ -449,7 +487,7 @@ async function refresh(){
       m=`<iframe src="${item.link}" class="media"></iframe>`
     }
 
-    // ========== 修复3：标题单行折叠 + 展开按钮 ==========
+    // 最终 HTML（替换骨架）
     c.innerHTML=`
     ${m}
     <div class="title">
@@ -459,7 +497,7 @@ async function refresh(){
     <div class="actions">
       <button class="action-btn" onclick="addFav('${item.link}','${item.title}','${item.imgs[0]||''}',${item.isVideo})">⭐</button>
     </div>`
-    s.appendChild(c)
+    SWIPER.appendChild(c)
   })
 }
 
