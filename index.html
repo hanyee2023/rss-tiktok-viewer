@@ -104,6 +104,21 @@ input,select,textarea{width:100%;padding:12px;margin:8px 0;background:#222;color
 .feed-item{background:#1a1a1a;padding:12px;border-radius:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
 .feed-buttons{display:flex;gap:6px;flex-wrap:wrap}
 .fav-item{background:#222;padding:12px;border-radius:8px;margin:8px 0}
+
+/* ========== 只改：新建弹窗按钮左右分布、小按钮 ========== */
+.add-buttons {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+  gap: 10px;
+}
+.add-buttons button {
+  padding: 6px 12px;
+  font-size: 13px;
+  flex: none;
+  width: auto;
+}
 </style>
 </head>
 <body>
@@ -125,8 +140,11 @@ input,select,textarea{width:100%;padding:12px;margin:8px 0;background:#222;color
 <option value="img">图片源</option>
 <option value="video">视频源</option>
 </select>
-<button class="btn" onclick="saveAdd()">保存</button>
-<button class="btn" onclick="hideAllPanel()">关闭</button>
+<!-- 新建：左右小按钮 -->
+<div class="add-buttons">
+  <button class="btn" onclick="saveAdd()">保存</button>
+  <button class="btn" onclick="hideAllPanel()">关闭</button>
+</div>
 </div>
 
 <div class="panel" id="managePanel">
@@ -172,7 +190,7 @@ async function refreshSingleFeed(url){
   alert('已单独刷新该订阅');
 }
 
-// ======修复核心：点击顶部图片/视频强制全源汇总======
+// ======点击顶部图片/视频强制全源汇总======
 function switchTab(t,dom){
   currTab = t;
   currFeed = 'all'; // 固定全部订阅汇总
@@ -259,7 +277,7 @@ function renderManage(){
         </div></div>`
     })
   }
-  document.getElementById('manageBox').innerHTML = html||'<div style="color:#999">暂无订阅</div>';
+  document.getElementById('manageBox').innerHTML = html||'<div style="color:#aaa">暂无订阅</div>';
 }
 
 function hideAllPanel(){
@@ -272,7 +290,7 @@ function showFav(){
     let res = '';
     if(item.isImg){
       if(Array.isArray(item.res)){
-        res = `<div class="img-wrap">${item.res.map(u=>`<div class="img-item"><img src="${u}"></div>`).join('')}</div>`
+        res = `<div class="img-wrap">${item.res.map(u=>`<div class="img-item"><img src="${u}" referrerpolicy="no-referrer"></div>`).join('')}</div>`
       }else{
         res = `<img src="${item.res}" style="width:100%;height:180px;object-fit:contain">`;
       }
@@ -299,7 +317,7 @@ function openFav(link){
     }else{
       dom = `<img class="media" src="${d.res}">`;
     }
-  }else dom = `<video class="media" controls src="${d.res}"></video>`;
+  }else dom = `<video class="media" controls autoplay playsinline src="${d.res}"></video>`;
   div.innerHTML = `${dom}<div class="title"><div>${d.title}</div></div>`;
   wrap.appendChild(div);hideAllPanel();
 }
@@ -459,9 +477,12 @@ function renderPage(){
         domStr = `<div style="color:#aaa">无图片</div>`;
       }
     }else{
-      if(!item.res) domStr = `<div style="color:#aaa">未获取到MP4</div>`;
-      // 视频默认取消静音
-      else domStr = `<video class="media" controls autoplay playsinline src="${item.res}"></video>`;
+      if(!item.res){
+        domStr = `<div style="color:#aaa">未获取到MP4</div>`;
+      }else{
+        // 恢复原生controls → 进度条、暂停、音量、全屏都回来
+        domStr = `<video class="media" controls autoplay playsinline src="${item.res}"></video>`;
+      }
     }
     const tid = 't_'+Math.random().toString(36).slice(3);
     card.innerHTML = `
