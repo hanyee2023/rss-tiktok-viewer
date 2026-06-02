@@ -154,6 +154,17 @@ function setAllRead(url){
   renderManage();renderPage();
 }
 
+function goFeed(url,type){
+  currFeed = url;
+  currTab = type;
+  let btns = document.querySelectorAll('.top-bar .btn');
+  btns.forEach(b=>b.classList.remove('active'));
+  if(type==='img') btns[0].classList.add('active');
+  else btns[1].classList.add('active');
+  hideAllPanel();
+  renderPage();
+}
+
 function showManage(){renderManage();document.getElementById('managePanel').classList.add('show')}
 function renderManage(){
   let html='';
@@ -164,7 +175,7 @@ function renderManage(){
     imgFeed.forEach(f=>{
       const num = allData.filter(d=>d.source===f.url&&!readList.includes(d.link)).length;
       html += `<div class="feed-item">
-        <div onclick="currFeed='${f.url}';renderPage();hideAllPanel()">${f.name}<span class="badge">${num}</span></div>
+        <div onclick="goFeed('${f.url}','img')">${f.name}<span class="badge">${num}</span></div>
         <div class="feed-buttons">
           <button class="btn btn-single" onclick="refreshSingleFeed('${f.url}')">刷新</button>
           <button class="btn" onclick="setAllRead('${f.url}')">全部已读</button>
@@ -177,7 +188,7 @@ function renderManage(){
     vidFeed.forEach(f=>{
       const num = allData.filter(d=>d.source===f.url&&!readList.includes(d.link)).length;
       html += `<div class="feed-item">
-        <div onclick="currFeed='${f.url}';renderPage();hideAllPanel()">${f.name}<span class="badge">${num}</span></div>
+        <div onclick="goFeed('${f.url}','video')">${f.name}<span class="badge">${num}</span></div>
         <div class="feed-buttons">
           <button class="btn btn-single" onclick="refreshSingleFeed('${f.url}')">刷新</button>
           <button class="btn" onclick="setAllRead('${f.url}')">全部已读</button>
@@ -297,6 +308,7 @@ async function loadAllRss(force=false){
   renderPage();
 }
 
+// 修复：切页立刻停上一个视频、上个条目标已读、新条目自动播放
 wrap.addEventListener('scroll',()=>{
   clearTimeout(scrollLock);
   scrollLock = setTimeout(()=>{
@@ -305,23 +317,25 @@ wrap.addEventListener('scroll',()=>{
     const idx = Math.round(pos/h);
     if(Math.abs(idx-nowIndex)>1)return;
     if(idx !== nowIndex){
+      // 1、上一条标记已读
       const prevItem = renderList[nowIndex];
       if(prevItem&&!readList.includes(prevItem.link)){
         readList.push(prevItem.link);
         STORE.set('read',readList);
         renderManage();
       }
+      // 2、强制停止正在播放的上一个视频，杜绝混音
       if(currVideo){
         currVideo.pause();
+        currVideo = null;
       }
+      // 3、当前页面找到视频自动播放
       const curCard = wrap.children[idx];
       if(curCard){
         const v = curCard.querySelector('video');
         if(v){
           currVideo = v;
           v.play().catch(e=>{});
-        }else{
-          currVideo = null;
         }
       }
       nowIndex = idx;
@@ -345,7 +359,6 @@ function renderPage(){
       else domStr = `<div style="color:#aaa">无图片</div>`;
     }else{
       if(!item.res) domStr = `<div style="color:#aaa">未获取到MP4</div>`;
-      // ✅ 所有视频统一：直接自动播放，无任何判断！
       else domStr = `<video class="media" controls autoplay muted playsinline src="${item.res}"></video>`;
     }
     const tid = 't_'+Math.random().toString(36).slice(3);
