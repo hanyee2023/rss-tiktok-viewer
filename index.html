@@ -61,8 +61,13 @@ input, select, textarea {
 width:100%;padding:12px;margin:8px 0;background:#222;color:#fff;border:none;border-radius:8px;
 font-size:14px
 }
-.feed-list {margin-top:15px;display:flex;column;gap:8px}
-.feed-row {display:flex;justify-content:space-between;align-items:center}
+.feed-list {margin-top:15px;display:flex;flex-direction:column;gap:12px}
+.feed-category {
+background:#ff6a00;color:#fff;padding:8px 12px;border-radius:8px;font-weight:bold;margin-bottom:8px;
+}
+.feed-item {background:#1a1a1a;padding:12px;border-radius:8px;display:flex;justify-content:space-between;align-items:center}
+.feed-name {font-size:15px;}
+.feed-buttons {display:flex;gap:6px}
 .fav-item {background:#222;padding:12px;border-radius:8px;margin:8px 0}
 
 video::-webkit-media-controls {display:flex !important; opacity:1 !important}
@@ -109,7 +114,7 @@ video::-webkit-media-controls-enclosure {opacity:1 !important}
 <div class="panel" id="manage-panel">
   <h3>订阅源管理</h3>
   <div id="manage-list" class="feed-list"></div>
-  <button class="btn" onclick="closePanel()">关闭</button>
+  <button class="btn" onclick="closePanel()" style="margin-top:15px;">关闭</button>
 </div>
 
 <div class="panel" id="favorite-panel">
@@ -195,20 +200,46 @@ function saveEdit(){
 function showFeedManager(){renderManageList();document.getElementById('manage-panel').classList.add('show')}
 function renderManageList(){
   const ml=document.getElementById('manage-list')
-  ml.innerHTML=feeds.map(f=>{
-    const cnt=allItems.filter(i=>i.feed===f.url&&!read.includes(i.link)).length
-    const t=f.type==='video'?'【视频】':'【图片】'
-    return `
-    <div class="feed-row">
-      <span onclick="switchFeed('${f.url}')">${t} ${f.name}</span>
-      <div style="display:flex;gap:6px">
-        <span class="badge">${cnt}</span>
-        <button class="btn" onclick="editFeed('${f.url}')">编辑</button>
-        <button class="btn" onclick="markAllRead('${f.url}')">全部已读</button>
-        <button class="btn" onclick="deleteFeed('${f.url}')">删除</button>
-      </div>
-    </div>`
-  }).join('')
+  const imageFeeds = feeds.filter(f => f.type === 'image')
+  const videoFeeds = feeds.filter(f => f.type === 'video')
+  let html = ''
+
+  if(imageFeeds.length > 0){
+    html += `<div class="feed-category">【图片】</div>`
+    imageFeeds.forEach(f=>{
+      const cnt=allItems.filter(i=>i.feed===f.url&&!read.includes(i.link)).length
+      html += `
+      <div class="feed-item">
+        <div class="feed-name">${f.name} <span class="badge">${cnt}</span></div>
+        <div class="feed-buttons">
+          <button class="btn" onclick="editFeed('${f.url}')">编辑</button>
+          <button class="btn" onclick="markAllRead('${f.url}')">全部已读</button>
+          <button class="btn" onclick="deleteFeed('${f.url}')">删除</button>
+        </div>
+      </div>`
+    })
+  }
+
+  if(videoFeeds.length > 0){
+    html += `<div class="feed-category">【视频】</div>`
+    videoFeeds.forEach(f=>{
+      const cnt=allItems.filter(i=>i.feed===f.url&&!read.includes(i.link)).length
+      html += `
+      <div class="feed-item">
+        <div class="feed-name">${f.name} <span class="badge">${cnt}</span></div>
+        <div class="feed-buttons">
+          <button class="btn" onclick="editFeed('${f.url}')">编辑</button>
+          <button class="btn" onclick="markAllRead('${f.url}')">全部已读</button>
+          <button class="btn" onclick="deleteFeed('${f.url}')">删除</button>
+        </div>
+      </div>`
+    })
+  }
+
+  if(html === ''){
+    html = `<p style="color:#888;">暂无订阅源，点击顶部「新建」添加</p>`
+  }
+  ml.innerHTML = html
 }
 function switchFeed(u){currentFeed=u;refresh();closePanel()}
 function markAllRead(u){
