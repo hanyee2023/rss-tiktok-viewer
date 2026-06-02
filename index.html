@@ -70,7 +70,6 @@ background:#ff6a00;color:#fff;padding:8px 12px;border-radius:8px;font-weight:bol
 .feed-buttons {display:flex;gap:6px}
 .fav-item {background:#222;padding:12px;border-radius:8px;margin:8px 0}
 
-/* 强制视频控件显示 */
 video::-webkit-media-controls {
 display:flex !important; opacity:1 !important; visibility:visible !important;
 }
@@ -158,7 +157,7 @@ let currentTab = 'image'
 let editingFeedUrl = ''
 let currentShowIndex = 0
 let currentDataList = []
-let activeVideoElement = null; // 用于跟踪当前播放的视频
+let activeVideoElement = null;
 
 window.onload = function(){
   refresh()
@@ -181,7 +180,10 @@ function addNewFeed(){
   const idx = feeds.findIndex(x => x.url === url)
   if(idx >=0){ feeds[idx].name=name; feeds[idx].type=type }
   else{ feeds.push({name,url,type}) }
-  STORE.set('feeds',feeds); refresh(); closePanel(); alert('成功')
+  STORE.set('feeds',feeds);
+  refresh();
+  closePanel();
+  alert('成功')
 }
 
 function editFeed(u){
@@ -200,10 +202,16 @@ function saveEdit(){
   if(!name||!url)return
   const idx=feeds.findIndex(x=>x.url===editingFeedUrl)
   if(idx>=0){feeds[idx].name=name;feeds[idx].url=url;feeds[idx].type=type}
-  STORE.set('feeds',feeds);refresh();closePanel();alert('修改成功')
+  STORE.set('feeds',feeds);
+  refresh();
+  closePanel();
+  alert('修改成功')
 }
 
-function showFeedManager(){renderManageList();document.getElementById('manage-panel').classList.add('show')}
+function showFeedManager(){
+  renderManageList();
+  document.getElementById('manage-panel').classList.add('show')
+}
 function renderManageList(){
   const ml=document.getElementById('manage-list')
   const imageFeeds = feeds.filter(f => f.type === 'image')
@@ -314,7 +322,6 @@ async function loadAll(){
         const l=(i.tagName==='item'?i.querySelector('link')?.textContent:i.querySelector('link')?.href)||''
         const T=i.querySelector('title')?.textContent||'无标题'
         const D=i.querySelector('description,content,summary')?.textContent||''
-        // 修正图片解析逻辑，提高匹配成功率
         const imgs = [];
         const imgRegex = /<img[^>]+src\s*=\s*["']([^"']+)["']/gi;
         let match;
@@ -343,7 +350,6 @@ function handleScroll(){
 }
 
 async function refresh(){
-  // 刷新前暂停所有正在播放的视频
   if (activeVideoElement) {
     activeVideoElement.pause();
     activeVideoElement = null;
@@ -352,6 +358,11 @@ async function refresh(){
   const s=document.getElementById('swiper')
   s.innerHTML='加载中...'
   allItems=await loadAll()
+
+  // ========== 关键修复：新订阅源未读数为 0 ==========
+  // 每次 loadAll 后强制刷新管理列表，让未读数立刻更新
+  renderManageList();
+
   let list=currentFeed==='all'?allItems:allItems.filter(i=>i.feed===currentFeed)
   if(currentTab==='image')list=list.filter(i=>!i.isVideo)
   if(currentTab==='video')list=list.filter(i=>i.isVideo)
@@ -362,12 +373,10 @@ async function refresh(){
     let m=''
     const vId=`v${Math.random().toString(36).slice(2)}`
     if(item.isVideo){
-      // 强制显示视频控件
       m=`<video id="${vId}" class="media" controls controlslist="nodownload nofullscreen noremoteplayback" playsinline preload="metadata"></video>`
       setTimeout(()=>{
         const v=document.getElementById(vId)
         if(!v)return
-        // 暂停之前的视频
         if (activeVideoElement && activeVideoElement !== v) {
           activeVideoElement.pause();
         }
@@ -375,18 +384,17 @@ async function refresh(){
 
         if(item.link.endsWith('.m3u8')&&Hls.isSupported()){
           const h=new Hls();h.loadSource(item.link);h.attachMedia(v)
-          h.on(Hls.Events.MANIFEST_PARSED,()=>{
-            // 加载完成后不自动播放，避免自动播放冲突
-          })
         }else{v.src=item.link;}
-        // 禁止自动播放
         v.autoplay = false;
-        v.onclick=null
       },0)
     }else if(item.imgs.length>1){
-      m=`<div class="carousel">${item.imgs.map(u=>`<div class="carousel-item"><img src="${u}" class="media" loading="lazy"></div>`).join('')}</div>`
+      m=`<div class="carousel">${item.imgs.map(u=>
+        `<div class="carousel-item">
+          <img src="${u}" class="media" loading="lazy" referrerpolicy="no-referrer">
+        </div>`
+      ).join('')}</div>`
     }else if(item.imgs.length===1){
-      m=`<img src="${item.imgs[0]}" class="media" loading="lazy">`
+      m=`<img src="${item.imgs[0]}" class="media" loading="lazy" referrerpolicy="no-referrer">`
     }else{
       m=`<iframe src="${item.link}" class="media"></iframe>`
     }
@@ -398,7 +406,6 @@ async function refresh(){
     </div>`
     s.appendChild(c)
   })
-  renderManageList()
 }
 
 function addFav(link,title,img,isVideo){
@@ -410,7 +417,7 @@ function showFavorites(){
   const f=document.getElementById('favorite-list')
   f.innerHTML=fav.map((k,i)=>{
     let media=''
-    if(!k.isVideo&&k.img)media=`<img src="${k.img}" style="width:100%;height:160px;object-fit:cover">`
+    if(!k.isVideo&&k.img)media=`<img src="${k.img}" style="width:100%;height:160px;object-fit:cover" referrerpolicy="no-referrer">`
     if(k.isVideo)media=`<div style="color:#aaa;padding:10px;background:#333">视频内容</div>`
     return `
     <div class="fav-item">
@@ -435,12 +442,10 @@ function viewFav(link){
       const v=document.getElementById(vId)
       if(item.link.endsWith('.m3u8')&&Hls.isSupported()){
         const h=new Hls();h.loadSource(item.link);h.attachMedia(v)
-        h.on(Hls.Events.MANIFEST_PARSED,()=>v.play())
-      }else{v.src=item.link;v.play()}
-      v.onclick=null
+      }else{v.src=item.link;}
     },0)
   }else if(item.imgs[0]){
-    m=`<img src="${item.imgs[0]}" class="media">`
+    m=`<img src="${item.imgs[0]}" class="media" referrerpolicy="no-referrer">`
   }
   c.innerHTML=m+`<div class="title">${item.title}</div>`
   s.appendChild(c);closePanel()
