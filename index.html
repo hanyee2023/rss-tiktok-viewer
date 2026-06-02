@@ -175,6 +175,7 @@ function switchTab(t,dom){
   currFeed = 'all';
   document.querySelectorAll('.top-bar .btn').forEach(b=>b.classList.remove('active'));
   dom.classList.add('active');
+  if(currVideo){currVideo.pause();currVideo=null;}
   renderPage();
 }
 
@@ -220,6 +221,7 @@ function goFeed(url,type){
   let btns = document.querySelectorAll('.top-bar .btn');
   btns.forEach(b=>b.classList.remove('active'));
   type==='img'?btns[0].classList.add('active'):btns[1].classList.add('active');
+  if(currVideo){currVideo.pause();currVideo=null;}
   hideAllPanel();
   renderPage();
 }
@@ -334,42 +336,48 @@ async function loadAllRss(force=false){
   renderManage();renderPage();
 }
 
+// ========== 核心：滚动切换逻辑 ==========
 wrap.addEventListener('scroll',()=>{
   clearTimeout(scrollLock);
   scrollLock=setTimeout(()=>{
     const h=wrap.clientHeight;
     const idx=Math.round(wrap.scrollTop/h);
-    if(Math.abs(idx-nowIndex)>1)return;
-    if(idx!==nowIndex){
-      // 修复2：上一条直接标记已读+存本地+刷新角标
-      const prevItem = renderList[nowIndex];
-      if(prevItem && !readList.includes(prevItem.link)){
-        readList.push(prevItem.link);
-        STORE.set('read',readList);
-        renderManage();
-      }
-      // 修复1：切换立刻暂停旧视频，杜绝多音源混播
-      if(currVideo){
-        currVideo.pause();
-        currVideo = null;
-      }
-      const v=wrap.children[idx]?.querySelector('video');
-      if(v){
-        currVideo=v;
-        v.play().catch(()=>{})
-      }
-      nowIndex=idx;
+    if(idx === nowIndex) return;
+
+    // 1. 停掉上一个视频
+    if(currVideo){
+      currVideo.pause();
+      currVideo=null;
     }
-  },80)
+
+    // 2. 上一条标记已读 + 保存 + 刷新角标
+    const prevItem = renderList[nowIndex];
+    if(prevItem && !readList.includes(prevItem.link)){
+      readList.push(prevItem.link);
+      STORE.set('read',readList);
+      renderManage();
+    }
+
+    // 3. 播放当前视频（JS触发，不静音）
+    const targetV = wrap.children[idx]?.querySelector('video');
+    if(targetV){
+      currVideo = targetV;
+      currVideo.play().catch(()=>{});
+    }
+
+    nowIndex = idx;
+  },50)
 })
 
+// ========== 渲染：一次性全部渲染，不做懒加载 ==========
 function renderPage(){
-  if(currVideo){currVideo.pause();currVideo=null}
+  if(currVideo){currVideo.pause();currVideo=null;}
   let arr = currFeed==='all'?[...allData]:allData.filter(d=>d.source===currFeed);
   arr = currTab==='img'?arr.filter(d=>d.isImg):arr.filter(d=>!d.isImg);
   renderList=arr.filter(d=>!readList.includes(d.link));
+
   wrap.innerHTML='';
-  renderList.forEach(item=>{
+  renderList.forEach((item,i)=>{
     const card=document.createElement('div');card.className='card';
     let dom;
     if(item.isImg){
@@ -377,7 +385,8 @@ function renderPage(){
         `<div class="img-wrap">${item.res.map(u=>`<div class="img-item"><img src="${u}" referrerpolicy="no-referrer"></div>`).join('')}</div>`
         :`<img class="media" src="${item.res}" referrerpolicy="no-referrer">`;
     }else{
-      dom=item.res?`<video class="media" controls autoplay playsinline src="${item.res}"></video>`:`<div style="color:#aaa">无视频</div>`;
+      // 不写autoplay，全部由JS控制播放
+      dom=item.res?`<video class="media" controls playsinline src="${item.res}"></video>`:`<div style="color:#aaa">无视频</div>`;
     }
     const tid='t_'+Math.random().toString(36).slice(3);
     card.innerHTML=`
@@ -390,6 +399,12 @@ function renderPage(){
     `;
     wrap.appendChild(card);
   })
+
+  // 渲染完自动播放当前第一个
+  setTimeout(()=>{
+    const v=wrap.children[nowIndex]?.querySelector('video');
+    if(v){currVideo=v;v.play().catch(()=>{});}
+  },20)
 }
 </script>
 </body>
