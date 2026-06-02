@@ -19,6 +19,7 @@ background:#ff6a00;color:#fff;border:none;padding:8px 12px;border-radius:8px;
 white-space:nowrap;cursor:pointer;font-weight:bold
 }
 .btn.active {background:#ff9500}
+.btn-refresh {background:#0099ff;}
 .badge {
 background:#fff;color:#ff6a00;font-size:12px;padding:2px 6px;border-radius:10px;font-weight:bold;
 display:inline-block;min-width:20px;text-align:center
@@ -26,14 +27,16 @@ display:inline-block;min-width:20px;text-align:center
 
 .swiper {
 margin-top:60px;height:calc(100vh - 60px);overflow-y:scroll;
-scroll-snap-type:y mandatory;-webkit-overflow-scrolling:touch
+/* 修复滚动过灵敏跳多条 */
+scroll-snap-type:y mandatory;-webkit-overflow-scrolling:touch;
+scroll-behavior:auto;
 }
 .card {
 width:100vw;height:calc(100vh - 60px);scroll-snap-align:start;
+scroll-snap-stop:always;/* 关键：强制一次只停靠单个卡片，禁止跨卡 */
 position:relative;display:flex;align-items:center;justify-content:center;
 background:#000;overflow:hidden
 }
-/* 骨架屏 */
 .skeleton {
 width:100%;height:100%;background:#222;
 display:flex;align-items:center;justify-content:center;color:#666
@@ -101,6 +104,7 @@ opacity:1 !important; display:flex !important;
   <button class="btn" onclick="showFeedManager()">管理</button>
   <button class="btn" onclick="showFavorites()">收藏</button>
   <button class="btn" onclick="showImportExport()">导入/导出</button>
+  <button class="btn btn-refresh" onclick="forceRefresh()">刷新全部</button>
 </div>
 
 <div class="swiper" id="swiper"></div>
@@ -155,9 +159,17 @@ opacity:1 !important; display:flex !important;
 </div>
 
 <script>
-const CORS_PROXY = "https://api.allorigins.win/raw?url=";
-const RSS_CACHE = new Map(); // RSS 缓存 {url: {items, time}}
-const CACHE_TTL = 5 * 60 * 1000; // 5分钟缓存
+// 多代理备用池，解决单一代理排队延迟加载
+const PROXY_LIST = [
+    "https://api.allorigins.win/raw?url=",
+    "https://corsproxy.io/?",
+];
+function getProxy(){
+    return PROXY_LIST[Math.floor(Math.random()*PROXY_LIST.length)];
+}
+const RSS_CACHE = new Map();
+const CACHE_TTL = 3*60*1000; // 缩短缓存至3分钟
+const FETCH_TIMEOUT = 6000;
 
 const STORE = {
   get(k) { return JSON.parse(localStorage.getItem(k) || '[]') },
@@ -174,22 +186,28 @@ let editingFeedUrl = ''
 let currentShowIndex = 0
 let currentDataList = []
 let activeVideoElement = null;
+let scrollTimer = null; // 滚动防抖
 
-// 虚拟滚动相关
 const SWIPER = document.getElementById('swiper');
 let visibleStart = 0;
 let visibleEnd = 5;
 
 window.onload = function(){
-  refresh(true); // 首次加载才拉 RSS
+  refresh(true);
   SWIPER.addEventListener('scroll', handleScroll)
+}
+
+function forceRefresh(){
+  RSS_CACHE.clear();
+  refresh(true);
+  alert('已清空缓存强制刷新');
 }
 
 function switchTab(tab, btn) {
   currentTab = tab
   document.querySelectorAll('.top-bar .btn').forEach(b => b.classList.remove('active'))
   btn.classList.add('active')
-  renderCards(); // 只重新渲染卡片，不拉 RSS
+  renderCards();
 }
 
 function showAddFeed(){ document.getElementById('add-panel').classList.add('show') }
@@ -198,13 +216,14 @@ function addNewFeed(){
   const url = document.getElementById('new-url').value.trim()
   const type = document.getElementById('new-type').value
   if(!name || !url) return alert('请填写完整')
+  RSS_CACHE.delete(url);
   const idx = feeds.findIndex(x => x.url === url)
   if(idx >=0){ feeds[idx].name=name; feeds[idx].type=type }
   else{ feeds.push({name,url,type}) }
   STORE.set('feeds',feeds);
-  refresh(true); // 新增订阅才拉 RSS
+  refresh(true);
   closePanel();
-  alert('成功')
+  alert('添加成功');
 }
 
 function editFeed(u){
@@ -221,10 +240,12 @@ function saveEdit(){
   const url = document.getElementById('edit-url').value.trim()
   const type = document.getElementById('edit-type').value
   if(!name||!url)return
+  RSS_CACHE.delete(editingFeedUrl);
+  RSS_CACHE.delete(url);
   const idx=feeds.findIndex(x=>x.url===editingFeedUrl)
   if(idx>=0){feeds[idx].name=name;feeds[idx].url=url;feeds[idx].type=type}
   STORE.set('feeds',feeds);
-  refresh(true); // 编辑订阅才拉 RSS
+  refresh(true);
   closePanel();
   alert('修改成功')
 }
@@ -238,7 +259,6 @@ function renderManageList(){
   const imageFeeds = feeds.filter(f => f.type === 'image')
   const videoFeeds = feeds.filter(f => f.type === 'video')
   let html = ''
-
   if(imageFeeds.length > 0){
     html += `<div class="feed-category">【图片】</div>`
     imageFeeds.forEach(f=>{
@@ -254,7 +274,6 @@ function renderManageList(){
       </div>`
     })
   }
-
   if(videoFeeds.length > 0){
     html += `<div class="feed-category">【视频】</div>`
     videoFeeds.forEach(f=>{
@@ -270,15 +289,11 @@ function renderManageList(){
       </div>`
     })
   }
-
-  if(html === ''){
-    html = `<p style="color:#888;">暂无订阅源，点击顶部「新建」添加</p>`
-  }
+  if(html === '') html = `<p style="color:#888;">暂无订阅源，点击顶部「新建」添加</p>`
   ml.innerHTML = html
 }
 
 function switchFeed(u){currentFeed=u;renderCards();closePanel()}
-
 function markAllRead(u){
   allItems.forEach(i=>{if(i.feed===u&&!read.includes(i.link))read.push(i.link)})
   STORE.set('read',read);renderManageList();renderCards()
@@ -292,11 +307,11 @@ function deleteFeed(u){
   STORE.set('read', read);
   feeds = feeds.filter(x=>x.url!==u);
   STORE.set('feeds',feeds);
+  RSS_CACHE.delete(u);
   refresh(true);
 }
 
 function closePanel(){document.querySelectorAll('.panel').forEach(p=>p.classList.remove('show'))}
-
 function showImportExport(){document.getElementById('import-export-panel').classList.add('show')}
 function exportData(){
   const d={feeds,read,fav}
@@ -311,11 +326,11 @@ function importData(){
     if(confirm('覆盖现有数据？')){
       feeds=d.feeds||[];read=d.read||[];fav=d.fav||[]
       STORE.set('feeds',feeds);STORE.set('read',read);STORE.set('fav',fav)
+      RSS_CACHE.clear();
       refresh(true);closePanel();alert('导入成功')
     }
   }catch(e){alert('格式错误')}
 }
-
 function importOPML(){
   const f=document.getElementById('opml-file')
   const t=document.getElementById('opml-data').value.trim()
@@ -338,26 +353,30 @@ function parseOPML(x){
       if(u)n.push({name:t,url:u,type:'image'})
     })
     if(confirm(`导入${n.length}个？`)){
-      feeds=[...feeds,...n];STORE.set('feeds',feeds);refresh(true);closePanel();alert('成功')
+      feeds=[...feeds,...n];STORE.set('feeds',feeds);
+      RSS_CACHE.clear();
+      refresh(true);closePanel();alert('成功')
     }
   }catch(e){alert('失败')}
 }
 
-// 带缓存的加载 RSS
 async function loadAll(force=false){
   const r=[]
+  // 逐个串行请求，避免并发堵塞
   for(const f of feeds){
     const now = Date.now();
     const cached = RSS_CACHE.get(f.url);
-    // 有缓存且没过期、不强制刷新 → 用缓存
     if(!force && cached && now - cached.time < CACHE_TTL){
       r.push(...cached.items);
       continue;
     }
-    // 否则重新请求
     try{
-      const res = await fetch(CORS_PROXY + encodeURIComponent(f.url))
-      if(!res.ok)continue
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+      const proxyUrl = getProxy()+encodeURIComponent(f.url);
+      const res = await fetch(proxyUrl, {signal: controller.signal});
+      clearTimeout(timeoutId);
+      if(!res.ok) throw new Error('请求异常'+res.status);
       const t=await res.text()
       const d=new DOMParser().parseFromString(t,'text/xml')
       const n=[...d.querySelectorAll('item'),...d.querySelectorAll('entry')]
@@ -369,49 +388,53 @@ async function loadAll(force=false){
         const imgs = [];
         const imgRegex = /<img[^>]+src\s*=\s*["']([^"']+)["']/gi;
         let match;
-        while ((match = imgRegex.exec(D)) !== null) {
-          imgs.push(match[1]);
-        }
+        while ((match = imgRegex.exec(D)) !== null) imgs.push(match[1]);
         items.push({feed:f.url,title:T,link:l,imgs:imgs,isVideo:f.type==='video'})
       })
       RSS_CACHE.set(f.url, {items, time: now});
       r.push(...items);
-    }catch(e){console.error("加载RSS失败:", e)}
+    }catch(e){
+      console.error(f.name,"加载失败",e);
+    }
   }
   return r
 }
 
-// 处理滚动 + 虚拟滚动
+// 滚动防抖，避免短时间多次触发跳转
 function handleScroll(){
-  const h=SWIPER.clientHeight
-  const st=SWIPER.scrollTop
-  const now=Math.round(st/h)
-  // 虚拟滚动范围
-  const newStart = Math.max(0, now - 2);
-  const newEnd = now + 3;
-  if(newStart !== visibleStart || newEnd !== visibleEnd){
-    visibleStart = newStart;
-    visibleEnd = newEnd;
-    renderCards();
-  }
-  // 标记已读
-  if(now>currentShowIndex){
-    const p=currentDataList[currentShowIndex]
-    if(p&&!read.includes(p.link)){
-      read.push(p.link);STORE.set('read',read);renderManageList()
-    }
-  }
-  currentShowIndex=now;
-  // 视频离开视口暂停
-  if(activeVideoElement){
-    const rect = activeVideoElement.getBoundingClientRect();
-    if(rect.top > window.innerHeight || rect.bottom < 0){
-      activeVideoElement.pause();
-    }
-  }
+    clearTimeout(scrollTimer);
+    scrollTimer = setTimeout(()=>{
+        const h=SWIPER.clientHeight
+        const st=SWIPER.scrollTop
+        const now=Math.round(st/h)
+        // 只允许±1范围切换，杜绝一次跳多页
+        if(Math.abs(now-currentShowIndex)>1) return;
+        const newStart = Math.max(0, now - 2);
+        const newEnd = now + 3;
+        if(newStart !== visibleStart || newEnd !== visibleEnd){
+            visibleStart = newStart;
+            visibleEnd = newEnd;
+            renderCards();
+        }
+        if(now>currentShowIndex){
+            const p=currentDataList[currentShowIndex]
+            if(p&&!read.includes(p.link)){
+                read.push(p.link);STORE.set('read',read);renderManageList()
+            }
+        }
+        currentShowIndex=now;
+        // 不在屏幕立刻销毁视频，根治混音
+        if(activeVideoElement){
+            const rect = activeVideoElement.getBoundingClientRect();
+            if(rect.top > window.innerHeight || rect.bottom < 0){
+                activeVideoElement.pause();
+                activeVideoElement.remove();
+                activeVideoElement=null;
+            }
+        }
+    },80);
 }
 
-// 标题展开/收起
 function toggleTitle(id) {
   const el = document.getElementById(id);
   el.classList.toggle('expanded');
@@ -419,17 +442,17 @@ function toggleTitle(id) {
   btn.textContent = el.classList.contains('expanded') ? '收起' : '展开';
 }
 
-// 主刷新（首次/增删订阅时拉RSS）
 async function refresh(force=false){
   allItems=await loadAll(force);
   renderManageList();
   renderCards();
 }
 
-// 只渲染卡片（虚拟滚动 + 过滤）
 function renderCards(){
+  // 渲染前销毁旧视频
   if (activeVideoElement) {
     activeVideoElement.pause();
+    activeVideoElement.remove();
     activeVideoElement = null;
   }
   let list=currentFeed==='all'?allItems:allItems.filter(i=>i.feed===currentFeed)
@@ -439,11 +462,9 @@ function renderCards(){
   currentDataList=unread;
   currentShowIndex=0;
 
-  // 虚拟滚动：只渲染 visibleStart ~ visibleEnd
   const toRender = unread.slice(visibleStart, visibleEnd);
-  // 占位高度（保证滚动条正确）
-  const totalHeight = unread.length * (window.innerHeight - 60);
-  SWIPER.style.paddingTop = (visibleStart * (window.innerHeight - 60)) + 'px';
+  const perH = window.innerHeight - 60;
+  SWIPER.style.paddingTop = (visibleStart * perH) + 'px';
   SWIPER.innerHTML = '';
 
   toRender.forEach((item, idx) => {
@@ -452,11 +473,8 @@ function renderCards(){
     let m=''
     const vId=`v${realIdx}`
     const titleId = `title-${realIdx}`;
-
-    // 骨架屏优先
     c.innerHTML = `<div class="skeleton">加载中...</div>`;
 
-    // 推特视频直接拦截
     if(item.isVideo){
       if (item.link.includes('video.twimg.com')) {
         m = `<div style="color:#fff;padding:20px;">当前环境无法播放推特视频</div>`;
@@ -465,8 +483,10 @@ function renderCards(){
         setTimeout(()=>{
           const v=document.getElementById(vId)
           if(!v)return
-          if (activeVideoElement && activeVideoElement !== v) {
-            activeVideoElement.pause();
+          // 新视频生成，关闭之前所有视频
+          if (activeVideoElement) {
+              activeVideoElement.pause();
+              activeVideoElement.remove();
           }
           activeVideoElement = v;
           if(item.link.endsWith('.m3u8')&&Hls.isSupported()){
@@ -476,18 +496,13 @@ function renderCards(){
         },0)
       }
     } else if(item.imgs.length>1){
-      m=`<div class="carousel">${item.imgs.map(u=>
-        `<div class="carousel-item">
-          <img src="${u}" class="media" loading="lazy" referrerpolicy="no-referrer">
-        </div>`
-      ).join('')}</div>`
+      m=`<div class="carousel">${item.imgs.map(u=>`<div class="carousel-item"><img src="${u}" class="media" loading="lazy" referrerpolicy="no-referrer"></div>`).join('')}</div>`
     }else if(item.imgs.length===1){
       m=`<img src="${item.imgs[0]}" class="media" loading="lazy" referrerpolicy="no-referrer">`
     }else{
       m=`<iframe src="${item.link}" class="media"></iframe>`
     }
 
-    // 最终 HTML（替换骨架）
     c.innerHTML=`
     ${m}
     <div class="title">
@@ -512,12 +527,7 @@ function showFavorites(){
     let media=''
     if(!k.isVideo&&k.img)media=`<img src="${k.img}" style="width:100%;height:160px;object-fit:cover" referrerpolicy="no-referrer">`
     if(k.isVideo)media=`<div style="color:#aaa;padding:10px;background:#333">视频内容</div>`
-    return `
-    <div class="fav-item">
-      <div>${k.title}</div>${media}
-      <button class="btn" onclick="viewFav('${k.link}')">查看</button>
-      <button class="btn" onclick="delFav(${i})">删除</button>
-    </div>`
+    return `<div class="fav-item"><div>${k.title}</div>${media}<button class="btn" onclick="viewFav('${k.link}')">查看</button><button class="btn" onclick="delFav(${i})">删除</button></div>`
   }).join('')
   document.getElementById('favorite-panel').classList.add('show')
 }
